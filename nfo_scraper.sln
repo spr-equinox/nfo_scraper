@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.34309.116
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "nfo_scraper", "nfo_scraper\nfo_scraper.vcxproj", "{BB96D764-6D07-493B-B8ED-7D75B7F3D019}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BB96D764-6D07-493B-B8ED-7D75B7F3D019}.Debug|x64.ActiveCfg = Debug|x64
+		{BB96D764-6D07-493B-B8ED-7D75B7F3D019}.Debug|x64.Build.0 = Debug|x64
+		{BB96D764-6D07-493B-B8ED-7D75B7F3D019}.Release|x64.ActiveCfg = Release|x64
+		{BB96D764-6D07-493B-B8ED-7D75B7F3D019}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {7CA79948-B3A8-4585-AD5F-4743A2DD5D83}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,16 @@
+{
+    "media_extension": [
+        ".mkv",
+        ".mp4",
+        ".m2ts"
+    ],
+	"title_regex_expression": [
+		["^([\\[\\(].*?[\\]\\)]\\[* *)*([^#\\[\\]\\.\\(\\)]*)+.*$", 2]
+	],
+	"ignore_expression": [
+		"BDMV"
+	],
+	"tmdb_api_key": "",
+	"using_proxy": true,
+	"proxy_address": "http://127.0.0.1:7890"
+}
