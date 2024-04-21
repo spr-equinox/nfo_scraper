@@ -19,7 +19,7 @@
 
 fetch_shows::fetch_shows(config* c, fetch_seasons* w, QWidget* parent)
     : QMainWindow(parent) {
-    cfg = c, next_window = w;
+    cfg = c, next_window = w, running = 0;
     ui.setupUi(this);
     ui.showsTable->horizontalHeader()->sectionResizeMode(QHeaderView::Fixed);
     ui.showsTable->verticalHeader()->sectionResizeMode(QHeaderView::Fixed);
@@ -38,6 +38,7 @@ fetch_shows::fetch_shows(config* c, fetch_seasons* w, QWidget* parent)
 }
 
 void fetch_shows::set_library(std::unordered_map<path, vec_paths>&& source) {
+    QApplication::processEvents();
     library = std::move(source);
     ui.showsTable->setRowCount(library.size());
     shows.reserve(library.size());
@@ -79,7 +80,7 @@ Q_INVOKABLE void fetch_shows::thread_return(QString result, int row, QString tit
     ui.showsTable->item(row, 3)->setText(std::move(title));
     ((QComboBox*)ui.showsTable->cellWidget(row, 4))->setCurrentIndex(type);
     ui.showsTable->item(row, 5)->setText(std::move(overview));
-    if (!QThreadPool::globalInstance()->activeThreadCount()) {
+    if (!--running) {
         // ui.showsTable->resizeColumnsToContents();
         // ui.showsTable->resizeRowsToContents();
         all_setEnable(true);
@@ -88,7 +89,7 @@ Q_INVOKABLE void fetch_shows::thread_return(QString result, int row, QString tit
 }
 
 Q_INVOKABLE void fetch_shows::write_return() {
-    if (!QThreadPool::globalInstance()->activeThreadCount()) {
+    if (!--running) {
         // ui.showsTable->resizeColumnsToContents();
         // ui.showsTable->resizeRowsToContents();
         all_setEnable(true);
@@ -109,6 +110,7 @@ void fetch_shows::SearchSelected_Clicked() {
     for (auto&& it : index) {
         std::string search = ui.showsTable->item(it.row(), 1)->text().toStdString();
         search_thread* t = new search_thread(std::move(search), it.row(), cfg, this);
+        ++running;
         QThreadPool::globalInstance()->start(t);
     }
 }
@@ -126,6 +128,7 @@ void fetch_shows::UpdateSelected_Clicked() {
         QLineEdit* edit = (QLineEdit*)ui.showsTable->cellWidget(it.row(), 2);
         QComboBox* type = (QComboBox*)ui.showsTable->cellWidget(it.row(), 4);
         update_thread* t = new update_thread(edit->text().toInt(), it.row(), type->currentIndex(), cfg, this);
+        ++running;
         QThreadPool::globalInstance()->start(t);
     }
 }
@@ -143,6 +146,7 @@ void fetch_shows::WriteSelected_Clicked() {
         called = false;
         QComboBox* type = (QComboBox*)ui.showsTable->cellWidget(it.row(), 4);
         write_thread* t = new write_thread(edit.toInt(), type->currentIndex(), shows[it.row()], cfg, this);
+        ++running;
         QThreadPool::globalInstance()->start(t);
     }
     if (called) all_setEnable(true);

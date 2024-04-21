@@ -18,6 +18,7 @@ write_ignore::write_ignore(QWidget* parent)
 write_ignore::~write_ignore() {}
 
 void write_ignore::set_library(vec_paths&& data) {
+    QApplication::processEvents();
     for (auto&& it : data) ui.folderList->addItem(QString::fromStdString(it.generic_u8string()));
 }
 

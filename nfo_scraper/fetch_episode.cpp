@@ -18,7 +18,7 @@
 
 fetch_episode::fetch_episode(config* c, write_ignore* w, QWidget* parent)
     : QMainWindow(parent) {
-    cfg = c, next_window = w, cur_row = -1;
+    cfg = c, next_window = w, cur_row = -1, running = 0;
     ui.setupUi(this);
     ui.SeasonTable->horizontalHeader()->sectionResizeMode(QHeaderView::Fixed);
     ui.SeasonTable->verticalHeader()->sectionResizeMode(QHeaderView::Fixed);
@@ -40,6 +40,7 @@ fetch_episode::fetch_episode(config* c, write_ignore* w, QWidget* parent)
 fetch_episode::~fetch_episode() {}
 
 void fetch_episode::set_library(vec_paths&& p, std::vector<std::tuple<QString, QString, QString> >&& n, std::vector<std::tuple<int, bool, int> >&& data) {
+    QApplication::processEvents();
     ui.centralwidget->setEnabled(false);
     pth = std::move(p), names = std::move(n);
     ui.SeasonTable->setRowCount(names.size());
@@ -63,6 +64,7 @@ void fetch_episode::set_library(vec_paths&& p, std::vector<std::tuple<QString, Q
         sort(local_video[i].begin(), local_video[i].end());
 #endif
         update_thread* t = new update_thread(std::get<0>(data[i]), std::get<1>(data[i]), std::get<2>(data[i]), remote_data.data() + i, i, cfg, this);
+        ++running;
         QThreadPool::globalInstance()->start(t);
     }
     if (pth.empty()) ui.centralwidget->setEnabled(true);
@@ -70,13 +72,13 @@ void fetch_episode::set_library(vec_paths&& p, std::vector<std::tuple<QString, Q
 
 Q_INVOKABLE void fetch_episode::update_return(int row) {
     ui.SeasonTable->item(row, 1)->setText(local_video[row].size() == remote_data[row].size() ? "√" : "×");
-    if (!QThreadPool::globalInstance()->activeThreadCount())
+    if (!--running)
         ui.centralwidget->setEnabled(true);
     return;
 }
 
 Q_INVOKABLE void fetch_episode::write_return() {
-    if (!QThreadPool::globalInstance()->activeThreadCount())
+    if (!--running)
         ui.centralwidget->setEnabled(true);
     return;
 }
@@ -157,6 +159,7 @@ void fetch_episode::WriteButton_Clicked() {
         for (size_t i = 0; i < local_video[row].size(); ++i) {
             called = false;
             write_thread* t = new write_thread(remote_data[row][i].series_id, remote_data[row][i].type, remote_data[row][i].season_number, remote_data[row][i].episode_number, local_video[row][i], cfg, this);
+            ++running;
             QThreadPool::globalInstance()->start(t);
         }
     }

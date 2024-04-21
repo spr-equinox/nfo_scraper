@@ -59,8 +59,8 @@ void process_shows::dfs(const path& now) {
 void process_shows::Next_Clicked() {
     spdlog::info("第二阶段结束");
     close();
-    next_window->set_library(std::move(library));
     next_window->show();
+    next_window->set_library(std::move(library));
     destroy();
 }
 

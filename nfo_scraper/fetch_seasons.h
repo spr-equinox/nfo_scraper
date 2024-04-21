@@ -77,6 +77,7 @@ private:
     config* cfg;
     QMenu* menu;
     fetch_episode* next_window;
+    int running;
     Q_INVOKABLE void thread_return(QString result, int row, QString title, int type, QString overview, vec_data data);
     Q_INVOKABLE void write_return();
     Q_INVOKABLE int cover_check(const QString& title, const QString& content);

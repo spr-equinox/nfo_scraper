@@ -67,6 +67,7 @@ private:
     config* cfg;
     QMenu* menu;
     fetch_seasons* next_window;
+    int running;
     Q_INVOKABLE void thread_return(QString result, int r, QString title, bool type, QString overview);
     Q_INVOKABLE void write_return();
     Q_INVOKABLE int cover_check(const QString& title, const QString& content);

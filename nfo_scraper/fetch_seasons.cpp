@@ -19,7 +19,7 @@
 
 fetch_seasons::fetch_seasons(config* c, fetch_episode* w, QWidget* parent)
     : QMainWindow(parent) {
-    cfg = c, next_window = w;
+    cfg = c, next_window = w, running = 0;
     ui.setupUi(this);
     ui.seasonsTable->horizontalHeader()->sectionResizeMode(QHeaderView::Fixed);
     ui.seasonsTable->verticalHeader()->sectionResizeMode(QHeaderView::Fixed);
@@ -38,6 +38,7 @@ fetch_seasons::fetch_seasons(config* c, fetch_episode* w, QWidget* parent)
 }
 
 void fetch_seasons::set_library(std::unordered_map<path, vec_paths>&& source, std::vector<std::tuple<QString, QString, bool> >&& vals) {
+    QApplication::processEvents();
     library = std::move(source);
     int idx = 0;
     for (auto&& it : library)
@@ -129,7 +130,7 @@ Q_INVOKABLE void fetch_seasons::thread_return(QString result, int row, QString t
         ui.seasonsTable->item(row, 7)->setText(QString::fromStdString(seasons[row].second[0].overview));
     else ui.seasonsTable->item(row, 7)->setText(std::move(overview));
     pt->blockSignals(false);
-    if (!QThreadPool::globalInstance()->activeThreadCount()) {
+    if (!--running) {
         // ui.seasonsTable->resizeColumnsToContents();
         // ui.seasonsTable->resizeRowsToContents();
         all_setEnable(true);
@@ -138,7 +139,7 @@ Q_INVOKABLE void fetch_seasons::thread_return(QString result, int row, QString t
 }
 
 Q_INVOKABLE void fetch_seasons::write_return() {
-    if (!QThreadPool::globalInstance()->activeThreadCount()) {
+    if (!--running) {
         // ui.seasonsTable->resizeColumnsToContents();
         // ui.seasonsTable->resizeRowsToContents();
         all_setEnable(true);
@@ -159,6 +160,7 @@ void fetch_seasons::SearchSelected_Clicked() {
     for (auto&& it : index) {
         const std::string search = ui.seasonsTable->item(it.row(), 2)->text().toStdString();
         search_thread* t = new search_thread(search, it.row(), cfg, this);
+        ++running;
         QThreadPool::globalInstance()->start(t);
     }
 }
@@ -176,6 +178,7 @@ void fetch_seasons::UpdateSelected_Clicked() {
         QLineEdit* edit = (QLineEdit*)ui.seasonsTable->cellWidget(it.row(), 3);
         QComboBox* type = (QComboBox*)ui.seasonsTable->cellWidget(it.row(), 5);
         update_thread* t = new update_thread(edit->text().toInt(), it.row(), type->currentIndex(), cfg, this);
+        ++running;
         QThreadPool::globalInstance()->start(t);
     }
 }
@@ -197,6 +200,7 @@ void fetch_seasons::WriteSelected_Clicked() {
         }
         called = false;
         write_thread* t = new write_thread(edit.toInt(), type ? -1 : seasons[it.row()].second[((QComboBox*)ui.seasonsTable->cellWidget(it.row(), 6))->currentIndex()].id, type, seasons[it.row()].first, cfg, this);
+        ++running;
         QThreadPool::globalInstance()->start(t);
     }
     if (called) all_setEnable(true);

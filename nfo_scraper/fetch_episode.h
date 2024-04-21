@@ -69,6 +69,7 @@ private:
     config* cfg;
     write_ignore* next_window;
     Ui::fetch_episodeClass ui;
+    int running;
 
     int cur_row;
     vec_paths cur_local;
