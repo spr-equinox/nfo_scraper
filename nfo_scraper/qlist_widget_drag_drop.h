@@ -15,4 +15,5 @@ public:
 protected:
     void dragEnterEvent(QDragEnterEvent* event);
     void dropEvent(QDropEvent* event);
+    void dragMoveEvent(QDragMoveEvent* event);
 };
