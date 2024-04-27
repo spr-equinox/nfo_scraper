@@ -426,7 +426,8 @@ void fetch_seasons::write_thread::run() {
     if (!type) season.append_child("season").append_child(node_pcdata).set_value(std::to_string(season_num).c_str());
     if (!type) season.append_child("seasonnumber").append_child(node_pcdata).set_value(std::to_string(season_num).c_str());
     season.append_child("plot").append_child(node_pcdata).set_value(details["overview"].GetString());
-    season.append_child("premiered").append_child(node_pcdata).set_value(details[type ? "release_date" : "air_date"].GetString());
+    if (details[type ? "release_date" : "air_date"].IsString())
+        season.append_child("premiered").append_child(node_pcdata).set_value(details[type ? "release_date" : "air_date"].GetString());
     if (type) season.append_child("status").append_child(node_pcdata).set_value(details["status"].GetString());
     season.append_child("episodeguide").append_child(node_pcdata).set_value(("{\"tmdb\": \"" + id_str + "\"}").c_str());
     xml_node ratings = season.append_child("ratings").append_child("rating");
@@ -527,7 +528,7 @@ void fetch_seasons::DialogSearchSelected_Clicked() {
         pt->clear();
 
         vec_data data;
-        if (!type) {
+        if (id && !type) {
             using namespace rapidjson;
             const std::string requrl = std::string("https://api.themoviedb.org/3/tv/") + std::to_string(id) + "?language=zh-CN";
             std::string reqdata = request(requrl.c_str(), cfg);
@@ -576,7 +577,7 @@ void fetch_seasons::Cell_DoubleClicked(int row, int column) {
     pt->clear();
 
     vec_data data;
-    if (!type) {
+    if (id && !type) {
         using namespace rapidjson;
         const std::string requrl = std::string("https://api.themoviedb.org/3/tv/") + std::to_string(id) + "?language=zh-CN";
         std::string reqdata = request(requrl.c_str(), cfg);

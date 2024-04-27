@@ -19,6 +19,7 @@ public:
 
 private:
     int id;
+    bool accepted;
     config* cfg;
     Ui_AddEpisodesDialog ui;
     fetch_episode::vec_remotes epis;

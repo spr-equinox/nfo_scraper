@@ -10,7 +10,7 @@
 
 add_episodes_dialog::add_episodes_dialog(int i, config* c, QWidget* parent)
     : QDialog(parent) {
-    id = i, cfg = c;
+    id = i, cfg = c, accepted = false;
     ui.setupUi(this);
 
     using namespace rapidjson;
@@ -45,16 +45,17 @@ fetch_episode::vec_remotes add_episodes_dialog::add_episodes(config* c, QWidget*
     if (type) return {fetch_episode::remote(id, type, -1, -1, name)};
     add_episodes_dialog dialog(id, c, parent);
     dialog.exec();
-    return dialog.epis;
+    return dialog.accepted ? dialog.epis : fetch_episode::vec_remotes();
 }
 
 void add_episodes_dialog::ConfirmButton_Clicked() {
     close();
+    accepted = true;
     fetch_episode::vec_remotes res;
     res.reserve(ui.EpisodeList->selectedItems().size());
     for (auto&& it : ui.EpisodeList->selectedItems())
         res.push_back(std::move(epis[ui.EpisodeList->row(it)]));
-    epis = res;
+    epis = std::move(res);
 }
 
 void add_episodes_dialog::GetButton_Clicked() {

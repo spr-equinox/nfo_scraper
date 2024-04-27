@@ -322,7 +322,8 @@ void fetch_shows::write_thread::run() {
     tvshow.append_child("originaltitle").append_child(node_pcdata).set_value(details[type ? "original_title" : "original_name"].GetString());
     tvshow.append_child("showtitle").append_child(node_pcdata).set_value(details[type ? "original_title" : "original_name"].GetString());
     tvshow.append_child("plot").append_child(node_pcdata).set_value(details["overview"].GetString());
-    tvshow.append_child("premiered").append_child(node_pcdata).set_value(details[type ? "release_date" : "first_air_date"].GetString());
+    if (details[type ? "release_date" : "first_air_date"].IsString())
+        tvshow.append_child("premiered").append_child(node_pcdata).set_value(details[type ? "release_date" : "first_air_date"].GetString());
     tvshow.append_child("status").append_child(node_pcdata).set_value(details["status"].GetString());
     tvshow.append_child("episodeguide").append_child(node_pcdata).set_value(("{\"tmdb\": \"" + id_str + "\"}").c_str());
     xml_node ratings = tvshow.append_child("ratings").append_child("rating");

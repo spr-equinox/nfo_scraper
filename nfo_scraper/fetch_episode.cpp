@@ -115,7 +115,7 @@ void fetch_episode::LocalAdd_Clicked() {
         return;
     }
     for (auto&& it : open->selectedFiles()) {
-        path now = it.toStdString();
+        path now = it.toStdWString();
         now.make_preferred();
         ui.LocalList->addItem(QString::fromStdString(now.filename().generic_u8string()));
         cur_local.emplace_back(std::move(now));
@@ -333,7 +333,8 @@ void fetch_episode::write_thread::run() {
     if (!type) episodedetails.append_child("seasonnumber").append_child(node_pcdata).set_value(std::to_string(season).c_str());
     if (!type) episodedetails.append_child("episode").append_child(node_pcdata).set_value(std::to_string(episode).c_str());
     episodedetails.append_child("plot").append_child(node_pcdata).set_value(details["overview"].GetString());
-    episodedetails.append_child("premiered").append_child(node_pcdata).set_value(details[type ? "release_date" : "air_date"].GetString());
+    if (details[type ? "release_date" : "air_date"].IsString())
+        episodedetails.append_child("premiered").append_child(node_pcdata).set_value(details[type ? "release_date" : "air_date"].GetString());
     if (type) episodedetails.append_child("status").append_child(node_pcdata).set_value(details["status"].GetString());
     episodedetails.append_child("episodeguide").append_child(node_pcdata).set_value(("{\"tmdb\": \"" + id_str + "\"}").c_str());
     xml_node ratings = episodedetails.append_child("ratings").append_child("rating");

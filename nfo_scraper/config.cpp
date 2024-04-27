@@ -89,7 +89,8 @@ config::config(const char* file) {
     if (json.HasMember("tmdb_api_key") && json["tmdb_api_key"].IsString())
         key = json["tmdb_api_key"].GetString();
     else spdlog::warn("配置文件中未找到 tmdb_api_key 或格式错误");
-    spdlog::info("已读取 API key");
+    if (key.empty()) spdlog::error("API key 为空");
+    else spdlog::info("已读取 API key");
 
     if (json.HasMember("using_proxy") && json["using_proxy"].IsBool())
         use_proxy = json["using_proxy"].GetBool();
