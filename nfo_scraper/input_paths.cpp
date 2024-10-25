@@ -6,9 +6,8 @@
 #include <filesystem>
 #include <vector>
 
-input_paths::input_paths(process_shows* w, QWidget* parent)
-    : QMainWindow(parent) {
-    next_window = w;
+input_paths::input_paths(window_init_with_data* next_window, QWidget* parent)
+    : QMainWindow(parent), next_window(next_window) {
     ui.setupUi(this);
     connect(ui.Add, SIGNAL(clicked()), this, SLOT(Add_Clicked()));
     connect(ui.Remove, SIGNAL(clicked()), this, SLOT(Remove_Clicked()));
@@ -40,16 +39,14 @@ void input_paths::Remove_Clicked() {
 }
 
 void input_paths::Next_Clicked() {
-    std::vector<std::filesystem::path> search_paths;
+    vec_paths* search_paths = new vec_paths;
     const auto cnt = ui.folderList->count();
-    search_paths.reserve(cnt);
+    (*search_paths).reserve(cnt);
     for (int i = 0; i < cnt; ++i)
-        search_paths.emplace_back(ui.folderList->item(i)->text().toStdWString());
+        (*search_paths).emplace_back(ui.folderList->item(i)->text().toStdWString());
     spdlog::info("第一阶段结束");
     close();
-    next_window->set_search_paths(std::move(search_paths));
-    next_window->show();
-    next_window->set_up();
+    next_window->init(search_paths);
     destroy();
 }
 

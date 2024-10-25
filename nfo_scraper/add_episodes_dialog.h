@@ -11,11 +11,11 @@ class add_episodes_dialog : public QDialog {
     Q_OBJECT
 
 public:
-    add_episodes_dialog(int i, config* c, QWidget* parent = nullptr);
+    add_episodes_dialog(int id, config* cfg, QWidget* parent);
     ~add_episodes_dialog();
 
     // id type name overview
-    static fetch_episode::vec_remotes add_episodes(config* c, QWidget* parent = nullptr, const char* str = nullptr);
+    static fetch_episode::vec_remotes add_episodes(config* cfg, QWidget* parent = nullptr, const char* str = nullptr);
 
 private:
     int id;

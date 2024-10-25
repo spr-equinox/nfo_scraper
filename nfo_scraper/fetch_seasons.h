@@ -6,17 +6,14 @@
 #include <filesystem>
 
 #include "config.h"
-#include "fetch_episode.h"
 #include "ui_fetch_seasons.h"
 
-class fetch_seasons : public QMainWindow {
+class fetch_seasons : public window_init_with_data {
     Q_OBJECT
 
 public:
-    using path = std::filesystem::path;
-    using vec_paths = std::vector<path>;
-    fetch_seasons(config* c, fetch_episode* w, QWidget* parent = nullptr);
-    void set_library(std::unordered_map<path, vec_paths>&& source, std::vector<std::tuple<QString, QString, bool> >&& vals);
+    fetch_seasons(config* cfg, window_init_with_data* next_window, QWidget* parent = nullptr);
+    void init(void* pointer) override;
     ~fetch_seasons();
 
     struct season_data {
@@ -32,7 +29,7 @@ public:
 private:
     class search_thread : public QRunnable {
     public:
-        search_thread(const std::string& n, int r, config* c, QObject* object);
+        search_thread(std::string&& name, int row, config* cfg, QObject* object);
 
     private:
         std::string name;
@@ -45,7 +42,7 @@ private:
     };
     class update_thread : public QRunnable {
     public:
-        update_thread(int i, int r, bool t, config* c, QObject* object);
+        update_thread(int id, int row, bool type, config* cfg, QObject* object);
 
     private:
         int id, row;
@@ -58,25 +55,32 @@ private:
     };
     class write_thread : public QRunnable {
     public:
-        write_thread(int i, int s, bool t, path p, config* c, QObject* object);
+        write_thread(int id, int season_number, bool type, fs_path path, config* cfg, QObject* object, shows_directories* shows, seasons_directories* seasons);
 
     private:
-        int id, season_num;
+        int id, season_number;
         bool type;
-        path pth;
+        fs_path path;
         QObject* obj;
         config* cfg;
+        shows_directories* shows;
+        seasons_directories* seasons;
+        std::mutex lock;
 
     protected:
         void run();
+        void write_nfo();
+        void write_strm();
     };
-    std::vector<std::pair<path, vec_data> > seasons;  // number name overview
+    std::vector<std::pair<fs_path, vec_data> > seasons;  // number name overview
     std::map<void*, int> cell_pos;
-    std::unordered_map<path, vec_paths> library;
+    library_directories library;
+    shows_directories shows_path;
+    seasons_directories seasons_path;
     Ui::fetch_seasonsClass ui;
     config* cfg;
     QMenu* menu;
-    fetch_episode* next_window;
+    window_init_with_data* next_window;
     int running;
     Q_INVOKABLE void thread_return(QString result, int row, QString title, int type, QString overview, vec_data data);
     Q_INVOKABLE void write_return();

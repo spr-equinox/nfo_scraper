@@ -17,9 +17,8 @@
 #include "search_dialog.h"
 #include "tools.h"
 
-fetch_seasons::fetch_seasons(config* c, fetch_episode* w, QWidget* parent)
-    : QMainWindow(parent) {
-    cfg = c, next_window = w, running = 0;
+fetch_seasons::fetch_seasons(config* cfg, window_init_with_data* next_window, QWidget* parent)
+    : window_init_with_data(parent), cfg(cfg), next_window(next_window), running(0) {
     ui.setupUi(this);
     ui.seasonsTable->horizontalHeader()->sectionResizeMode(QHeaderView::Fixed);
     ui.seasonsTable->verticalHeader()->sectionResizeMode(QHeaderView::Fixed);
@@ -37,9 +36,14 @@ fetch_seasons::fetch_seasons(config* c, fetch_episode* w, QWidget* parent)
     connect(ui.seasonsTable, SIGNAL(cellDoubleClicked(int, int)), this, SLOT(Cell_DoubleClicked(int, int)));
 }
 
-void fetch_seasons::set_library(std::unordered_map<path, vec_paths>&& source, std::vector<std::tuple<QString, QString, bool> >&& vals) {
+
+void fetch_seasons::init(void* pointer) {
+    using data_type = std::tuple<library_directories, std::vector<std::tuple<QString, QString, bool>>, shows_directories>;
+    show();
     QApplication::processEvents();
-    library = std::move(source);
+    library = std::move(std::get<0>(*(data_type*)pointer));
+    shows_path = std::move(std::get<2>(*(data_type*)pointer));
+    std::vector<std::tuple<QString, QString, bool>>& vals = std::get<1>(*(data_type*)pointer);
     int idx = 0;
     for (auto&& it : library)
         idx += it.second.size();
@@ -49,7 +53,7 @@ void fetch_seasons::set_library(std::unordered_map<path, vec_paths>&& source, st
     uint now = 0;
     all_setEnable(false);
     for (auto&& it : library) {
-        const QString folder = QString::fromStdString(it.first.generic_u8string());
+        const QString folder = QString::fromStdWString(it.first.generic_wstring());
         for (auto&& it2 : it.second) {
             const std::string name = it2.generic_u8string();
 
@@ -102,6 +106,7 @@ void fetch_seasons::set_library(std::unordered_map<path, vec_paths>&& source, st
     all_setEnable(true);
     // ui.seasonsTable->resizeColumnsToContents();
     // ui.seasonsTable->resizeRowsToContents();
+    delete (data_type*)pointer;
 }
 
 Q_INVOKABLE void fetch_seasons::thread_return(QString result, int row, QString title, int type, QString overview, vec_data data) {
@@ -158,8 +163,8 @@ void fetch_seasons::SearchSelected_Clicked() {
     if (index.empty()) return;
     all_setEnable(false);
     for (auto&& it : index) {
-        const std::string search = ui.seasonsTable->item(it.row(), 2)->text().toStdString();
-        search_thread* t = new search_thread(search, it.row(), cfg, this);
+        std::string search = ui.seasonsTable->item(it.row(), 2)->text().toStdString();
+        search_thread* t = new search_thread(std::move(search), it.row(), cfg, this);
         ++running;
         QThreadPool::globalInstance()->start(t);
     }
@@ -199,7 +204,7 @@ void fetch_seasons::WriteSelected_Clicked() {
             continue;
         }
         called = false;
-        write_thread* t = new write_thread(edit.toInt(), type ? -1 : seasons[it.row()].second[((QComboBox*)ui.seasonsTable->cellWidget(it.row(), 6))->currentIndex()].id, type, seasons[it.row()].first, cfg, this);
+        write_thread* t = new write_thread(edit.toInt(), type ? -1 : seasons[it.row()].second[((QComboBox*)ui.seasonsTable->cellWidget(it.row(), 6))->currentIndex()].id, type, seasons[it.row()].first, cfg, this, &shows_path, &seasons_path);
         ++running;
         QThreadPool::globalInstance()->start(t);
     }
@@ -248,9 +253,8 @@ void fetch_seasons::Season_Changed(int index) {
     ui.seasonsTable->item(row, 7)->setText(QString::fromStdString(seasons[row].second[index].overview));
 }
 
-fetch_seasons::search_thread::search_thread(const std::string& n, int r, config* c, QObject* object) {
-    name = n, row = r, cfg = c, obj = object;
-}
+fetch_seasons::search_thread::search_thread(std::string&& name, int row, config* cfg, QObject* object)
+    : name(std::move(name)), row(row), cfg(cfg), obj(object) {}
 
 void fetch_seasons::search_thread::run() {
     char* url = curl_escape(name.c_str(), name.size());
@@ -316,9 +320,8 @@ void fetch_seasons::search_thread::run() {
     return;
 }
 
-fetch_seasons::update_thread::update_thread(int i, int r, bool t, config* c, QObject* object) {
-    id = i, row = r, type = t, cfg = c, obj = object;
-}
+fetch_seasons::update_thread::update_thread(int id, int row, bool type, config* cfg, QObject* object)
+    : id(id), row(row), type(type), cfg(cfg), obj(object) {}
 
 void fetch_seasons::update_thread::run() {
     if (!id) {
@@ -358,57 +361,62 @@ void fetch_seasons::update_thread::run() {
     return;
 }
 
-fetch_seasons::write_thread::write_thread(int i, int s, bool t, path p, config* c, QObject* object) {
-    id = i, season_num = s, pth = p, type = t, cfg = c, obj = object;
-}
+fetch_seasons::write_thread::write_thread(int id, int season_number, bool type, fs_path path, config* cfg, QObject* object, shows_directories* shows, seasons_directories* seasons)
+    : id(id), season_number(season_number), type(type), path(path), cfg(cfg), obj(object), shows(shows), seasons(seasons) {}
 
 void fetch_seasons::write_thread::run() {
+    switch (cfg->get_save_type()) {
+    case 1:
+        write_nfo();
+        break;
+    case 2:
+        write_strm();
+        break;
+    }
+    QMetaObject::invokeMethod(obj, "write_return");
+}
+
+void fetch_seasons::write_thread::write_nfo() {
     using namespace rapidjson;
     const std::string id_str = std::to_string(id);
     std::string requrl;
     if (type)
         requrl = std::string("https://api.themoviedb.org/3/movie/") + id_str + "?language=zh-CN";
     else
-        requrl = std::string("https://api.themoviedb.org/3/tv/") + id_str + "/season/" + std::to_string(season_num) + "?language=zh-CN";
+        requrl = std::string("https://api.themoviedb.org/3/tv/") + id_str + "/season/" + std::to_string(season_number) + "?language=zh-CN";
     std::string reqdata = request(requrl.c_str(), cfg);
     if (reqdata.empty()) {
-        spdlog::error("无法获取详细信息 路径：{}", pth.generic_u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+        spdlog::error("无法获取详细信息 路径：{}", path.generic_u8string());
         return;
     }
     Document details, keywords, credits;
     if (details.Parse(reqdata.data()).HasParseError()) {
         spdlog::error("详细信息获取到的 JSON 解析错误 数据：{}", reqdata);
-        QMetaObject::invokeMethod(obj, "write_return");
         return;
     }
     if (type) {
         requrl = std::string("https://api.themoviedb.org/3/movie/") + id_str + "/keywords";
         reqdata = request(requrl.c_str(), cfg);
         if (reqdata.empty()) {
-            spdlog::error("无法获取关键词 路径：{}", pth.generic_u8string());
-            QMetaObject::invokeMethod(obj, "write_return");
+            spdlog::error("无法获取关键词 路径：{}", path.generic_u8string());
             return;
         }
         if (keywords.Parse(reqdata.data()).HasParseError()) {
             spdlog::error("关键词获取到的 JSON 解析错误 数据：{}", reqdata);
-            QMetaObject::invokeMethod(obj, "write_return");
             return;
         }
     }
     if (type)
         requrl = std::string("https://api.themoviedb.org/3/movie/") + id_str + "/credits?language=zh-CN";
     else
-        requrl = std::string("https://api.themoviedb.org/3/tv/") + id_str + "/season/" + std::to_string(season_num) + "/aggregate_credits?language=zh-CN";
+        requrl = std::string("https://api.themoviedb.org/3/tv/") + id_str + "/season/" + std::to_string(season_number) + "/aggregate_credits?language=zh-CN";
     reqdata = request(requrl.c_str(), cfg);
     if (reqdata.empty()) {
-        spdlog::error("无法获取制作人员数据 路径：{}", pth.generic_u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+        spdlog::error("无法获取制作人员数据 路径：{}", path.generic_u8string());
         return;
     }
     if (credits.Parse(reqdata.data()).HasParseError()) {
         spdlog::error("制作人员数据获取到的 JSON 解析错误 数据：{}", reqdata);
-        QMetaObject::invokeMethod(obj, "write_return");
         return;
     }
 
@@ -423,8 +431,8 @@ void fetch_seasons::write_thread::run() {
     season.append_child("title").append_child(node_pcdata).set_value(details[type ? "title" : "name"].GetString());
     if (type) season.append_child("originaltitle").append_child(node_pcdata).set_value(details["original_title"].GetString());
     if (type) season.append_child("showtitle").append_child(node_pcdata).set_value(details["original_title"].GetString());
-    if (!type) season.append_child("season").append_child(node_pcdata).set_value(std::to_string(season_num).c_str());
-    if (!type) season.append_child("seasonnumber").append_child(node_pcdata).set_value(std::to_string(season_num).c_str());
+    if (!type) season.append_child("season").append_child(node_pcdata).set_value(std::to_string(season_number).c_str());
+    if (!type) season.append_child("seasonnumber").append_child(node_pcdata).set_value(std::to_string(season_number).c_str());
     season.append_child("plot").append_child(node_pcdata).set_value(details["overview"].GetString());
     if (details[type ? "release_date" : "air_date"].IsString())
         season.append_child("premiered").append_child(node_pcdata).set_value(details[type ? "release_date" : "air_date"].GetString());
@@ -478,34 +486,68 @@ void fetch_seasons::write_thread::run() {
         else actor.append_child("role").append_child(node_pcdata).set_value(obj["roles"][0].GetObj()["character"].GetString());
     }
 
-    const path write = pth / "season.nfo";
+    const fs_path write = path / "season.nfo";
 
     if (std::filesystem::exists(write)) {
         int ret = -1;
-        QMetaObject::invokeMethod(obj, "cover_check", Qt::BlockingQueuedConnection, Q_RETURN_ARG(int, ret), Q_ARG(QString, "文件操作确认"), Q_ARG(QString, QString::fromStdString(write.u8string()) + " 已存在，是否覆盖"));
+        QMetaObject::invokeMethod(obj, "cover_check", Qt::BlockingQueuedConnection, Q_RETURN_ARG(int, ret), Q_ARG(QString, "文件操作确认"), Q_ARG(QString, QString::fromStdWString(write.generic_wstring()) + " 已存在，是否覆盖"));
         if (ret == QMessageBox::Yes) {
-            if (QFile::moveToTrash(QString::fromStdString(write.u8string())))
-                spdlog::info("{} 已被移至回收站", write.u8string());
+            if (QFile::moveToTrash(QString::fromStdWString(write.generic_wstring())))
+                spdlog::info("{} 已被移至回收站", write.generic_u8string());
             else {
-                spdlog::error("{} 移至回收站失败", write.u8string());
-                QMetaObject::invokeMethod(obj, "write_return");
+                spdlog::error("{} 移至回收站失败", write.generic_u8string());
                 return;
             }
         } else {
-            spdlog::info("用户放弃覆盖文件：{}", write.u8string());
-            QMetaObject::invokeMethod(obj, "write_return");
+            spdlog::info("用户放弃覆盖文件：{}", write.generic_u8string());
             return;
         }
     }
     if (!doc.save_file(write.generic_wstring().c_str())) {
-        spdlog::error("XML 输出故障 文件：{}", write.u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+        spdlog::error("XML 输出故障 文件：{}", write.generic_u8string());
         return;
     }
-    spdlog::info("元数据写入成功 文件：{}", write.u8string());
-
-    QMetaObject::invokeMethod(obj, "write_return");
+    spdlog::info("元数据写入成功 文件：{}", write.generic_u8string());
     return;
+}
+
+void fetch_seasons::write_thread::write_strm() {
+    std::lock_guard lk(lock); // TODO 优化多线程
+    auto it = shows->find({type, id});
+    if (it == shows->end()) {
+        using namespace rapidjson;
+        const std::string id_str = std::to_string(id);
+        std::string requrl = std::string("https://api.themoviedb.org/3/") + (type ? "movie/" : "tv/") + id_str + "?language=zh-CN";
+        std::string reqdata = request(requrl.c_str(), cfg);
+        if (reqdata.empty()) {
+            spdlog::error("无法获取详细信息 路径：{}", path.generic_u8string());
+            return;
+        }
+        Document details;
+        if (details.Parse(reqdata.data()).HasParseError()) {
+            spdlog::error("详细信息获取到的 JSON 解析错误 数据：{}", reqdata);
+            return;
+        }
+
+        std::wstring name = utf8_to_wchar(details[type ? "title" : "name"].GetString(), details[type ? "title" : "name"].GetStringLength());
+        std::wstring ori_name = name;
+        if (details[type ? "release_date" : "first_air_date"].IsString()) {
+            const char* tmp = details[type ? "release_date" : "first_air_date"].GetString();
+            name += std::wstring(L" (") + wchar_t(tmp[0]) + wchar_t(tmp[1]) + wchar_t(tmp[2]) + wchar_t(tmp[3]) + L')';
+        }
+        name += L" [tmdbid-" + std::to_wstring(id) + L']';
+        replace_illegal_char(name);
+        const fs_path folder = cfg->get_save_path() / (type ? L"电影" : L"剧集") / name;
+        it = shows->emplace(std::pair<bool, int>{type, id}, std::pair<fs_path, std::wstring>{folder, std::move(ori_name)}).first;
+        create_directory_with_log(folder);
+    }
+    if (type) {
+        seasons->emplace(std::tuple<bool, int, int>{true, id, -1}, std::pair<fs_path, std::wstring>{it->second.first, it->second.second});
+        return;
+    }
+    const fs_path folder = it->second.first / (std::wstring(L"Season ") + (season_number < 10 ? (L'0' + std::to_wstring(season_number)) : std::to_wstring(season_number)));
+    seasons->emplace(std::tuple<bool, int, int>{false, id, season_number}, std::pair<fs_path, std::wstring>{folder, it->second.second});
+    create_directory_with_log(folder);
 }
 
 void fetch_seasons::DialogSearchSelected_Clicked() {
@@ -610,12 +652,12 @@ void fetch_seasons::Cell_DoubleClicked(int row, int column) {
 void fetch_seasons::Next_Clicked() {
     spdlog::info("第四阶段结束");
     close();
-    vec_paths pth;
+    vec_paths path;
     std::vector<std::tuple<QString, QString, QString> > names;
     std::vector<std::tuple<int, bool, int> > data;
-    pth.reserve(seasons.size());
+    path.reserve(seasons.size());
     for (size_t i = 0; i < seasons.size(); ++i) {
-        pth.emplace_back(std::move(seasons[i].first));
+        path.emplace_back(std::move(seasons[i].first));
         names.emplace_back(ui.seasonsTable->item(i, 2)->text(), ui.seasonsTable->item(i, 4)->text(), ((QComboBox*)ui.seasonsTable->cellWidget(i, 6))->currentText());
         int id = ((QLineEdit*)ui.seasonsTable->cellWidget(i, 3))->text().toInt();
         bool type = ((QComboBox*)ui.seasonsTable->cellWidget(i, 5))->currentIndex();
@@ -624,8 +666,9 @@ void fetch_seasons::Next_Clicked() {
     }
     library.clear();
     seasons.clear();
-    next_window->show();
     // path name title seasontitle id type seasonid
-    next_window->set_library(std::move(pth), std::move(names), std::move(data));
+    using data_type = std::tuple<vec_paths, std::vector<std::tuple<QString, QString, QString>>, std::vector<std::tuple<int, bool, int>>, seasons_directories>;
+    next_window->init(new data_type{std::move(path), std::move(names), std::move(data), std::move(seasons_path)});
+    shows_path.clear();
     destroy();
 }

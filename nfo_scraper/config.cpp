@@ -32,6 +32,14 @@ std::string config::get_key() {
     return key;
 }
 
+char config::get_save_type() {
+    return save_type;
+}
+
+fs_path config::get_save_path() {
+    return save_path;
+}
+
 bool config::is_proxy() {
     return use_proxy;
 }
@@ -43,6 +51,7 @@ std::string config::proxy() {
 config::config(const char* file) {
     using namespace rapidjson;
     use_proxy = false;
+    save_type = -1;
     std::FILE* f = nullptr;
     errno_t error_code = fopen_s(&f, file, "rb");
     if (error_code) {
@@ -62,7 +71,7 @@ config::config(const char* file) {
     _fread_nolock_s(data, size + 1, sizeof(char), size, f);
     _fclose_nolock(f);
     Document json;
-    ParseResult json_error_code = json.Parse(data);
+    ParseResult json_error_code = json.Parse<kParseCommentsFlag>(data);
     free(data);
     if (!json_error_code) {
         spdlog::error("配置 JSON 解析错误：{} ({})", GetParseError_En(json_error_code.Code()), json_error_code.Offset());
@@ -109,4 +118,29 @@ config::config(const char* file) {
             } else ignore_reg.emplace_back(it.GetString());
     else spdlog::info("配置文件中未找到 ignore_expression 或格式错误");
     spdlog::info("加载{}个标忽略匹配表达式", ignore_reg.size());
+
+    if (json.HasMember("save_type") && json["save_type"].IsString()) {
+        const std::string type = json["save_type"].GetString();
+        spdlog::info("保存类型：{}", type);
+        if (type == "strm") {
+            save_type = 2;
+        } else if (type == "nfo") {
+            save_type = 1;
+        }
+    } else spdlog::error("配置文件中 save_type 项类型错误");
+    if (save_type == 2)
+        if (json.HasMember("save_path") && json["save_path"].IsString()) {
+            save_path = json["save_path"].GetString();
+            spdlog::info("保存地址：{}", save_path.generic_u8string());
+            if (!std::filesystem::exists(save_path)) {
+                spdlog::error("保存地址 {} 不存在", save_path.generic_u8string());
+                save_type = -1;
+            } else if (std::filesystem::is_directory(save_path) && !std::filesystem::is_empty(save_path)) {
+                spdlog::error("保存地址 {} 不为空白文件夹，为了安全，请选择空白文件夹", save_path.generic_u8string());
+                save_type = -1;
+            } else if (!create_directory_with_log(save_path / L"剧集") || !create_directory_with_log(save_path / L"电影")) {
+                spdlog::error("保存地址 {} 无法创建文件夹", save_path.generic_u8string());
+                save_type = -1;
+            }
+        } else spdlog::error("配置文件中 save_type 项类型错误");
 }

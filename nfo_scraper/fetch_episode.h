@@ -3,12 +3,13 @@
 #include <QMainWindow>
 #include <QThreadPool>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
 
 #include "config.h"
 #include "ui_fetch_episode.h"
-#include "write_ignore.h"
 
-class fetch_episode : public QMainWindow {
+class fetch_episode : public window_init_with_data {
     Q_OBJECT
 
 public:
@@ -23,22 +24,20 @@ public:
         remote() = default;
     };
     using vec_remotes = std::vector<remote>;
-    using path = std::filesystem::path;
-    using vec_paths = std::vector<path>;
-    fetch_episode(config* c, write_ignore* w, QWidget* parent = nullptr);
+    fetch_episode(config* cfg, window_init_with_data* next_window, QWidget* parent = nullptr);
     ~fetch_episode();
-    void set_library(vec_paths&& p, std::vector<std::tuple<QString, QString, QString> >&& n, std::vector<std::tuple<int, bool, int> >&& data);
+    void init(void* pointer) override;
 
 private:
     class update_thread : public QRunnable {
     public:
-        update_thread(int i, int t, int s, vec_remotes* v, int r, config* c, QObject* object);
+        update_thread(int id, bool type, int season, vec_remotes* remotes, int row, config* cfg, QObject* object);
 
     private:
         int id, season;
         bool type;
         int row;
-        vec_remotes* vec;
+        vec_remotes* remotes;
         QObject* obj;
         config* cfg;
 
@@ -47,27 +46,33 @@ private:
     };
     class write_thread : public QRunnable {
     public:
-        write_thread(int i, bool t, int s, int e, path p, config* c, QObject* object);
+        write_thread(int id, bool type, int season, int episode, fs_path path, config* cfg, QObject* object, seasons_directories* seasons);
 
     private:
         int id, season, episode;
         bool type;
         int row;
-        path pth;
+        fs_path path;
         vec_remotes* vec;
         QObject* obj;
         config* cfg;
+        std::mutex lock;
+        seasons_directories* seasons_path;
 
     protected:
         void run();
+        void write_nfo();
+        void write_strm();
     };
-    vec_paths pth;
+    vec_paths path;
     std::vector<vec_paths> local_video;
     std::vector<vec_remotes> remote_data;
     vec_paths addition_folder;
     std::vector<std::tuple<QString, QString, QString> > names;
+    seasons_directories seasons_path;
+    library_directories duplicate_path;
     config* cfg;
-    write_ignore* next_window;
+    window_init_with_data* next_window;
     Ui::fetch_episodeClass ui;
     int running;
 

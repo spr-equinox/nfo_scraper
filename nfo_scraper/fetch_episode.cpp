@@ -16,9 +16,8 @@
 #    include <shlwapi.h>
 #endif
 
-fetch_episode::fetch_episode(config* c, write_ignore* w, QWidget* parent)
-    : QMainWindow(parent) {
-    cfg = c, next_window = w, cur_row = -1, running = 0;
+fetch_episode::fetch_episode(config* cfg, window_init_with_data* next_window, QWidget* parent)
+    : window_init_with_data(parent), cfg(cfg), next_window(next_window), cur_row(-1), running(0) {
     ui.setupUi(this);
     ui.SeasonTable->horizontalHeader()->sectionResizeMode(QHeaderView::Fixed);
     ui.SeasonTable->verticalHeader()->sectionResizeMode(QHeaderView::Fixed);
@@ -39,25 +38,28 @@ fetch_episode::fetch_episode(config* c, write_ignore* w, QWidget* parent)
 
 fetch_episode::~fetch_episode() {}
 
-void fetch_episode::set_library(vec_paths&& p, std::vector<std::tuple<QString, QString, QString> >&& n, std::vector<std::tuple<int, bool, int> >&& data) {
+void fetch_episode::init(void* pointer) {
+    show();
+    using data_type = std::tuple<vec_paths, std::vector<std::tuple<QString, QString, QString>>, std::vector<std::tuple<int, bool, int>>, seasons_directories>;
     QApplication::processEvents();
     ui.centralwidget->setEnabled(false);
-    pth = std::move(p), names = std::move(n);
+    path = std::move(std::get<0>(*(data_type*)pointer)), names = std::move(std::get<1>(*(data_type*)pointer)), seasons_path = std::move(std::get<3>(*(data_type*)pointer));
+    std::vector<std::tuple<int, bool, int>>& data = std::get<2>(*(data_type*)pointer);
     ui.SeasonTable->setRowCount(names.size());
     for (size_t i = 0; i < names.size(); ++i) {
         ui.SeasonTable->setItem(i, 0, new QTableWidgetItem(std::get<0>(names[i])));
         ui.SeasonTable->setItem(i, 1, new QTableWidgetItem());
     }
-    local_video.resize(pth.size());
-    remote_data.resize(pth.size());
-    for (size_t i = 0; i < pth.size(); ++i) {
-        for (const auto& it : std::filesystem::directory_iterator(pth[i]))
+    local_video.resize(path.size());
+    remote_data.resize(path.size());
+    for (size_t i = 0; i < path.size(); ++i) {
+        for (const auto& it : std::filesystem::directory_iterator(path[i]))
             if (it.is_regular_file() && cfg->check_ext(it.path().extension().generic_u8string()))
                 local_video[i].emplace_back(it.path());
             else if (it.is_directory())
                 addition_folder.emplace_back(it.path());
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-        sort(local_video[i].begin(), local_video[i].end(), [](const path& lhs, const path& rhs) -> bool {
+        sort(local_video[i].begin(), local_video[i].end(), [](const fs_path& lhs, const fs_path& rhs) -> bool {
             return !~StrCmpLogicalW(lhs.generic_wstring().c_str(), rhs.generic_wstring().c_str());
         });
 #else
@@ -67,7 +69,8 @@ void fetch_episode::set_library(vec_paths&& p, std::vector<std::tuple<QString, Q
         ++running;
         QThreadPool::globalInstance()->start(t);
     }
-    if (pth.empty()) ui.centralwidget->setEnabled(true);
+    if (path.empty()) ui.centralwidget->setEnabled(true);
+    delete (data_type*)pointer;
 }
 
 Q_INVOKABLE void fetch_episode::update_return(int row) {
@@ -115,9 +118,9 @@ void fetch_episode::LocalAdd_Clicked() {
         return;
     }
     for (auto&& it : open->selectedFiles()) {
-        path now = it.toStdWString();
+        fs_path now = it.toStdWString();
         now.make_preferred();
-        ui.LocalList->addItem(QString::fromStdString(now.filename().generic_u8string()));
+        ui.LocalList->addItem(QString::fromStdWString(now.filename().generic_wstring()));
         cur_local.emplace_back(std::move(now));
     }
 }
@@ -158,7 +161,7 @@ void fetch_episode::WriteButton_Clicked() {
         }
         for (size_t i = 0; i < local_video[row].size(); ++i) {
             called = false;
-            write_thread* t = new write_thread(remote_data[row][i].series_id, remote_data[row][i].type, remote_data[row][i].season_number, remote_data[row][i].episode_number, local_video[row][i], cfg, this);
+            write_thread* t = new write_thread(remote_data[row][i].series_id, remote_data[row][i].type, remote_data[row][i].season_number, remote_data[row][i].episode_number, local_video[row][i], cfg, this, &seasons_path);
             ++running;
             QThreadPool::globalInstance()->start(t);
         }
@@ -168,8 +171,7 @@ void fetch_episode::WriteButton_Clicked() {
 
 void fetch_episode::NextButton_Clicked() {
     close();
-    next_window->show();
-    next_window->set_library(std::move(addition_folder));
+    if (cfg->get_save_type() == 1) next_window->init(new vec_paths(std::move(addition_folder)));
     destroy();
 }
 
@@ -192,9 +194,9 @@ void fetch_episode::RemoteRemove_Clicked() {
     }
 }
 
-fetch_episode::update_thread::update_thread(int i, int t, int s, vec_remotes* v, int r, config* c, QObject* object) {
-    id = i, type = t, season = s, vec = v, row = r, cfg = c, obj = object;
-}
+fetch_episode::update_thread::update_thread(int id, bool type, int season, vec_remotes* remotes, int row, config* cfg, QObject* object)
+    : id(id), type(type), season(season), remotes(remotes), row(row), cfg(cfg), obj(object) {}
+
 void fetch_episode::update_thread::run() {
     if (!id) {
         spdlog::warn("ID 为空，跳过");
@@ -217,7 +219,7 @@ void fetch_episode::update_thread::run() {
             return;
         }
 
-        vec->emplace_back(id, true, -1, -1, json["title"].GetString());
+        remotes->emplace_back(id, true, -1, -1, json["title"].GetString());
     } else {
         if (!~season) {
             spdlog::warn("Season 为空，跳过");
@@ -242,7 +244,7 @@ void fetch_episode::update_thread::run() {
         for (auto&& it : json["episodes"].GetArray()) {
             const auto tmp = it.GetObj();
             const int epi = tmp["episode_number"].GetInt();
-            vec->emplace_back(id, false, season, epi, QString::number(epi) + " - " + tmp["name"].GetString());
+            remotes->emplace_back(id, false, season, epi, QString::number(epi) + " - " + tmp["name"].GetString());
         }
     }
 
@@ -252,7 +254,7 @@ void fetch_episode::update_thread::run() {
 
 void fetch_episode::Cell_DoubleClicked(int row, int column) {
     const auto& [name, title, season_title] = names[row];
-    ui.PathEdit->setText(QString::fromStdString(pth[row].generic_u8string()));
+    ui.PathEdit->setText(QString::fromStdWString(path[row].generic_wstring()));
     ui.TitleText->setText(title);
     ui.SeasonText->setText(season_title);
     cur_row = row;
@@ -261,16 +263,27 @@ void fetch_episode::Cell_DoubleClicked(int row, int column) {
     ui.LocalList->clear();
     ui.RemoteList->clear();
     for (auto&& it : cur_local)
-        ui.LocalList->addItem(QString::fromStdString(it.filename().generic_u8string()));
+        ui.LocalList->addItem(QString::fromStdWString(it.filename().generic_wstring()));
     for (auto&& it : cur_remote)
         ui.RemoteList->addItem(it.name);
 }
 
-fetch_episode::write_thread::write_thread(int i, bool t, int s, int e, path p, config* c, QObject* object) {
-    id = i, type = t, season = s, episode = e, pth = std::move(p), cfg = c, obj = object;
-}
+fetch_episode::write_thread::write_thread(int id, bool type, int season, int episode, fs_path path, config* cfg, QObject* object, seasons_directories* seasons)
+    : id(id), type(type), season(season), episode(episode), path(std::move(path)), cfg(cfg), obj(object), seasons_path(seasons) {}
 
 void fetch_episode::write_thread::run() {
+    switch (cfg->get_save_type()) {
+    case 1:
+        write_nfo();
+        break;
+    case 2:
+        write_strm();
+        break;
+    }
+    QMetaObject::invokeMethod(obj, "write_return");
+}
+
+void fetch_episode::write_thread::write_nfo() {
     using namespace rapidjson;
     const std::string id_str = std::to_string(id);
     std::string requrl;
@@ -278,27 +291,23 @@ void fetch_episode::write_thread::run() {
     else requrl = std::string("https://api.themoviedb.org/3/tv/") + id_str + "/season/" + std::to_string(season) + "/episode/" + std::to_string(episode) + "?language=zh-CN";
     std::string reqdata = request(requrl.c_str(), cfg);
     if (reqdata.empty()) {
-        spdlog::error("无法获取详细信息 路径：{}", pth.generic_u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+        spdlog::error("无法获取详细信息 路径：{}", path.generic_u8string());
         return;
     }
     Document details, keywords, credits;
     if (details.Parse(reqdata.data()).HasParseError()) {
         spdlog::error("详细信息获取到的 JSON 解析错误 数据：{}", reqdata);
-        QMetaObject::invokeMethod(obj, "write_return");
         return;
     }
     if (type) {
         requrl = std::string("https://api.themoviedb.org/3/movie/") + id_str + "/keywords";
         reqdata = request(requrl.c_str(), cfg);
         if (reqdata.empty()) {
-            spdlog::error("无法获取关键词 路径：{}", pth.generic_u8string());
-            QMetaObject::invokeMethod(obj, "write_return");
+            spdlog::error("无法获取关键词 路径：{}", path.generic_u8string());
             return;
         }
         if (keywords.Parse(reqdata.data()).HasParseError()) {
             spdlog::error("关键词获取到的 JSON 解析错误 数据：{}", reqdata);
-            QMetaObject::invokeMethod(obj, "write_return");
             return;
         }
     }
@@ -308,13 +317,11 @@ void fetch_episode::write_thread::run() {
         requrl = std::string("https://api.themoviedb.org/3/tv/") + id_str + "/season/" + std::to_string(season) + "/episode/" + std::to_string(episode) + "/credits?language=zh-CN";
     reqdata = request(requrl.c_str(), cfg);
     if (reqdata.empty()) {
-        spdlog::error("无法获取制作人员数据 路径：{}", pth.generic_u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+        spdlog::error("无法获取制作人员数据 路径：{}", path.generic_u8string());
         return;
     }
     if (credits.Parse(reqdata.data()).HasParseError()) {
         spdlog::error("制作人员数据获取到的 JSON 解析错误 数据：{}", reqdata);
-        QMetaObject::invokeMethod(obj, "write_return");
         return;
     }
 
@@ -391,34 +398,82 @@ void fetch_episode::write_thread::run() {
         actor.append_child("role").append_child(node_pcdata).set_value(obj["character"].GetString());
     }
 
-    pth.replace_extension(".nfo");
+    path.replace_extension(".nfo");
 
-    if (std::filesystem::exists(pth)) {
+    if (std::filesystem::exists(path)) {
         int ret = -1;
-        QMetaObject::invokeMethod(obj, "cover_check", Qt::BlockingQueuedConnection, Q_RETURN_ARG(int, ret), Q_ARG(QString, "文件操作确认"), Q_ARG(QString, QString::fromStdString(pth.u8string()) + " 已存在，是否覆盖"));
+        QMetaObject::invokeMethod(obj, "cover_check", Qt::BlockingQueuedConnection, Q_RETURN_ARG(int, ret), Q_ARG(QString, "文件操作确认"), Q_ARG(QString, QString::fromStdWString(path.generic_wstring()) + " 已存在，是否覆盖"));
         if (ret == QMessageBox::Yes) {
-            if (QFile::moveToTrash(QString::fromStdString(pth.u8string())))
-                spdlog::info("{} 已被移至回收站", pth.u8string());
+            if (QFile::moveToTrash(QString::fromStdWString(path.generic_wstring())))
+                spdlog::info("{} 已被移至回收站", path.generic_u8string());
             else {
-                spdlog::error("{} 移至回收站失败", pth.u8string());
-                QMetaObject::invokeMethod(obj, "write_return");
+                spdlog::error("{} 移至回收站失败", path.generic_u8string());
                 return;
             }
         } else {
-            spdlog::info("用户放弃覆盖文件：{}", pth.u8string());
-            QMetaObject::invokeMethod(obj, "write_return");
+            spdlog::info("用户放弃覆盖文件：{}", path.generic_u8string());
             return;
         }
     }
-    if (!doc.save_file(pth.generic_wstring().c_str())) {
-        spdlog::error("XML 输出故障 文件：{}", pth.u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+    if (!doc.save_file(path.generic_wstring().c_str())) {
+        spdlog::error("XML 输出故障 文件：{}", path.generic_u8string());
         return;
     }
-    spdlog::info("元数据写入成功 文件：{}", pth.u8string());
-
-    QMetaObject::invokeMethod(obj, "write_return");
+    spdlog::info("元数据写入成功 文件：{}", path.generic_u8string());
     return;
+}
+
+void fetch_episode::write_thread::write_strm() {
+    std::lock_guard lk(lock);
+    auto it = seasons_path->find({type, id, season});
+    if (it == seasons_path->end()) {
+        using namespace rapidjson;
+        const std::string id_str = std::to_string(id);
+        std::string requrl = std::string("https://api.themoviedb.org/3/") + (type ? "movie/" : "tv/") + id_str + "?language=zh-CN";
+        std::string reqdata = request(requrl.c_str(), cfg);
+        if (reqdata.empty()) {
+            spdlog::error("无法获取详细信息 路径：{}", path.generic_u8string());
+            return;
+        }
+        Document details;
+        if (details.Parse(reqdata.data()).HasParseError()) {
+            spdlog::error("详细信息获取到的 JSON 解析错误 数据：{}", reqdata);
+            return;
+        }
+
+        std::wstring name = utf8_to_wchar(details[type ? "title" : "name"].GetString(), details[type ? "title" : "name"].GetStringLength());
+        std::wstring ori_name = name;
+        if (details[type ? "release_date" : "first_air_date"].IsString()) {
+            const char* tmp = details[type ? "release_date" : "first_air_date"].GetString();
+            name += std::wstring(L" (") + wchar_t(tmp[0]) + wchar_t(tmp[1]) + wchar_t(tmp[2]) + wchar_t(tmp[3]) + L')';
+        }
+        name += L" [tmdbid-" + std::to_wstring(id) + L']';
+        replace_illegal_char(name);
+        fs_path folder = cfg->get_save_path() / (type ? L"电影" : L"剧集") / name;
+        create_directory_with_log(folder);
+        if (type) {
+            seasons_path->emplace(std::tuple<bool, int, int>{true, id, -1}, std::pair<fs_path, std::wstring>{folder, std::move(ori_name)});
+            return;
+        }
+        folder = folder / (std::wstring(L"Season ") + (season < 10 ? (L'0' + std::to_wstring(season)) : std::to_wstring(season)));
+        it = seasons_path->emplace(std::tuple<bool, int, int>{false, id, season}, std::pair<fs_path, std::wstring>{folder, std::move(ori_name)}).first;
+        create_directory_with_log(folder);
+    }
+    fs_path folder = it->second.first;
+    std::wstring name = it->second.second;
+    if (!type) name += std::wstring(L" S") + (season < 10 ? (L'0' + std::to_wstring(season)) : std::to_wstring(season)) + L'E' + (episode < 10 ? (L'0' + std::to_wstring(episode)) : std::to_wstring(episode));
+    name += L".strm";
+    folder /= name;
+    if (std::filesystem::exists(folder)) {
+        spdlog::warn("{} 已存在，无法链接到 {}", folder.generic_u8string(), path.generic_u8string());
+        
+        return;
+    }
+    std::ofstream o(folder);
+    o << path.generic_u8string();
+    if (o.fail()) spdlog::error("{} 写入错误", folder.generic_u8string());
+    else spdlog::info("创建文件：{}", folder.generic_u8string());
+    o.close();
 }
 
 Q_INVOKABLE int fetch_episode::cover_check(const QString& title, const QString& content) {

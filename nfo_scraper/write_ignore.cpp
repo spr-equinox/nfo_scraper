@@ -7,7 +7,7 @@
 #include <vector>
 
 write_ignore::write_ignore(QWidget* parent)
-    : QMainWindow(parent) {
+    : window_init_with_data(parent) {
     ui.setupUi(this);
     connect(ui.Add, SIGNAL(clicked()), this, SLOT(Add_Clicked()));
     connect(ui.Remove, SIGNAL(clicked()), this, SLOT(Remove_Clicked()));
@@ -17,15 +17,17 @@ write_ignore::write_ignore(QWidget* parent)
 
 write_ignore::~write_ignore() {}
 
-void write_ignore::set_library(vec_paths&& data) {
+void write_ignore::init(void* pointer) {
+    show();
     QApplication::processEvents();
-    for (auto&& it : data) ui.folderList->addItem(QString::fromStdString(it.generic_u8string()));
+    for (auto&& it : *(vec_paths*)pointer) ui.folderList->addItem(QString::fromStdWString(it.generic_wstring()));
+    delete (vec_paths*)pointer;
 }
 
 void write_ignore::CreateIgnore_Clicked() {
     ui.Widget1->setEnabled(false);
     for (auto&& it : ui.folderList->selectedItems()) {
-        path p(it->text().toStdWString());
+        fs_path p(it->text().toStdWString());
         p /= ".ignore";
         if (std::filesystem::exists(p)) spdlog::info("文件 {} 已存在，跳过", p.generic_u8string());
         else {

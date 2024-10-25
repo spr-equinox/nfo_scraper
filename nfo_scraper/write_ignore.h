@@ -1,22 +1,20 @@
 #pragma once
 
 #include <QStringListModel>
-#include <QtWidgets/QMainWindow>
+#include <QMainWindow>
 #include <filesystem>
 
 #include "ui_write_ignore.h"
+#include "tools.h"
 
-class write_ignore : public QMainWindow {
+class write_ignore : public window_init_with_data {
     Q_OBJECT
 
 public:
-    using path = std::filesystem::path;
-    using vec_paths = std::vector<path>;
     write_ignore(QWidget* parent = nullptr);
     ~write_ignore();
-    void set_library(vec_paths&& data);
-
-private:
+    void init(void* pointer) override;
+    private:
     Ui::write_ignoreClass ui;
 
 private slots:

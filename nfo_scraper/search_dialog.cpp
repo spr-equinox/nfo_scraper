@@ -6,9 +6,8 @@
 
 #include <QMessageBox>
 
-search_dialog::search_dialog(config* c, QWidget* parent)
-    : QDialog(parent) {
-    cfg = c, result = -1;
+search_dialog::search_dialog(config* cfg, QWidget* parent)
+    : QDialog(parent), cfg(cfg), result(-1) {
     ui.setupUi(this);
     ui.tableWidget->horizontalHeader()->sectionResizeMode(QHeaderView::Fixed);
     ui.tableWidget->verticalHeader()->sectionResizeMode(QHeaderView::Fixed);
@@ -20,8 +19,8 @@ search_dialog::search_dialog(config* c, QWidget* parent)
 search_dialog::~search_dialog() {
 }
 
-std::tuple<int, bool, QString, QString> search_dialog::search_tvshow(config* c, QWidget* parent, const char* str) {
-    search_dialog dialog(c, parent);
+std::tuple<int, bool, QString, QString> search_dialog::search_tvshow(config* cfg, QWidget* parent, const char* str) {
+    search_dialog dialog(cfg, parent);
     if (str) dialog.ui.TextEdit->setText(str);
     dialog.exec();
     return ~dialog.result ? dialog.results[dialog.result] : std::tuple<int, bool, QString, QString>();

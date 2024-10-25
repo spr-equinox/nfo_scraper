@@ -17,9 +17,8 @@
 #include "search_dialog.h"
 #include "tools.h"
 
-fetch_shows::fetch_shows(config* c, fetch_seasons* w, QWidget* parent)
-    : QMainWindow(parent) {
-    cfg = c, next_window = w, running = 0;
+fetch_shows::fetch_shows(config* cfg, window_init_with_data* next_window, QWidget* parent)
+    : window_init_with_data(parent), cfg(cfg), next_window(next_window), running(0) {
     ui.setupUi(this);
     ui.showsTable->horizontalHeader()->sectionResizeMode(QHeaderView::Fixed);
     ui.showsTable->verticalHeader()->sectionResizeMode(QHeaderView::Fixed);
@@ -37,14 +36,16 @@ fetch_shows::fetch_shows(config* c, fetch_seasons* w, QWidget* parent)
     connect(ui.showsTable, SIGNAL(cellDoubleClicked(int, int)), this, SLOT(Cell_DoubleClicked(int, int)));
 }
 
-void fetch_shows::set_library(std::unordered_map<path, vec_paths>&& source) {
+void fetch_shows::init(void* pointer) {
+    show();
     QApplication::processEvents();
-    library = std::move(source);
+    library = std::move(*(library_directories*)pointer);
+    delete (library_directories*)pointer;
     ui.showsTable->setRowCount(library.size());
     shows.reserve(library.size());
     int idx = 0;
     for (auto&& it : library) {
-        auto item0 = new QTableWidgetItem(QString::fromStdString(it.first.generic_u8string()));
+        auto item0 = new QTableWidgetItem(QString::fromStdWString(it.first.generic_wstring()));
         item0->setFlags(item0->flags() ^ Qt::ItemIsEditable);
         ui.showsTable->setItem(idx, 0, item0);
 
@@ -101,212 +102,38 @@ Q_INVOKABLE int fetch_shows::cover_check(const QString& title, const QString& co
     return ui.CoverCheck->isChecked() ? QMessageBox::warning(this, title, content, QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes) : QMessageBox::Yes;
 }
 
-fetch_shows::~fetch_shows() {}
-
-void fetch_shows::SearchSelected_Clicked() {
-    const auto& index = ui.showsTable->selectionModel()->selectedRows();
-    if (index.empty()) return;
-    all_setEnable(false);
-    for (auto&& it : index) {
-        std::string search = ui.showsTable->item(it.row(), 1)->text().toStdString();
-        search_thread* t = new search_thread(std::move(search), it.row(), cfg, this);
-        ++running;
-        QThreadPool::globalInstance()->start(t);
-    }
-}
-
-void fetch_shows::all_setEnable(bool status) {
-    ui.Widget1->setEnabled(status);
-}
-
-void fetch_shows::UpdateSelected_Clicked() {
-    const auto& index = ui.showsTable->selectionModel()->selectedRows();
-    if (index.empty()) return;
-    all_setEnable(false);
-    for (auto&& it : index) {
-        const std::string search = ui.showsTable->item(it.row(), 1)->text().toStdString();
-        QLineEdit* edit = (QLineEdit*)ui.showsTable->cellWidget(it.row(), 2);
-        QComboBox* type = (QComboBox*)ui.showsTable->cellWidget(it.row(), 4);
-        update_thread* t = new update_thread(edit->text().toInt(), it.row(), type->currentIndex(), cfg, this);
-        ++running;
-        QThreadPool::globalInstance()->start(t);
-    }
-}
-
-void fetch_shows::WriteSelected_Clicked() {
-    all_setEnable(false);
-    bool called = true;
-    const auto& index = ui.showsTable->selectionModel()->selectedRows();
-    for (auto&& it : index) {
-        QString edit = ((QLineEdit*)ui.showsTable->cellWidget(it.row(), 2))->text();
-        if (edit.isEmpty()) {
-            spdlog::warn("缺少 TMDB ID，项目：{}", shows[it.row()].generic_u8string());
-            continue;
-        }
-        called = false;
-        QComboBox* type = (QComboBox*)ui.showsTable->cellWidget(it.row(), 4);
-        write_thread* t = new write_thread(edit.toInt(), type->currentIndex(), shows[it.row()], cfg, this);
-        ++running;
-        QThreadPool::globalInstance()->start(t);
-    }
-    if (called) all_setEnable(true);
-}
-
-void fetch_shows::RightMenu_Clicked(const QPoint& point) {
-    menu->exec(QCursor::pos());
-}
-
-void fetch_shows::RightMenuAction_Clicked() {
-    const auto& index = ui.showsTable->selectionModel()->selectedRows();
-    for (auto&& it : index) {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(ui.showsTable->item(it.row(), 0)->text()));
-    }
-}
-
-void fetch_shows::DialogSearchSelected_Clicked() {
-    const auto& index = ui.showsTable->selectionModel()->selectedRows();
-    for (auto&& it : index) {
-        const std::string search = ui.showsTable->item(it.row(), 1)->text().toStdString();
-        const auto& [id, type, name, overview] = search_dialog::search_tvshow(cfg, ui.Widget1, search.c_str());
-        ((QLineEdit*)ui.showsTable->cellWidget(it.row(), 2))->setText(id ? QString::number(id) : QString());
-        ui.showsTable->item(it.row(), 3)->setText(name);
-        ((QComboBox*)ui.showsTable->cellWidget(it.row(), 4))->setCurrentIndex(type);
-        ui.showsTable->item(it.row(), 5)->setText(overview);
-    }
-}
-
-void fetch_shows::Cell_DoubleClicked(int row, int column) {
-    const std::string search = ui.showsTable->item(row, 1)->text().toStdString();
-    const auto& [id, type, name, overview] = search_dialog::search_tvshow(cfg, ui.Widget1, search.c_str());
-    ((QLineEdit*)ui.showsTable->cellWidget(row, 2))->setText(id ? QString::number(id) : QString());
-    ui.showsTable->item(row, 3)->setText(name);
-    ((QComboBox*)ui.showsTable->cellWidget(row, 4))->setCurrentIndex(type);
-    ui.showsTable->item(row, 5)->setText(overview);
-}
-
-fetch_shows::search_thread::search_thread(std::string&& n, int r, config* c, QObject* object) {
-    name = std::move(n), row = r, cfg = c, obj = object;
-}
-
-void fetch_shows::search_thread::run() {
-    char* url = curl_escape(name.c_str(), name.size());
-    std::string requrl = std::string("https://api.themoviedb.org/3/search/multi?query=") + url + "&include_adult=false&language=zh-CN&page=1";
-    curl_free(url);
-    std::string reqdata = request(requrl.c_str(), cfg);
-    if (reqdata.empty()) {
-        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
-        return;
-    }
-
-    using namespace rapidjson;
-    Document json;
-    if (json.Parse(reqdata.data()).HasParseError()) {
-        spdlog::error("获取到的 JSON 解析错误 数据：{}", reqdata);
-        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
-        return;
-    }
-
-    QString id("-1"), title, overview;
-    bool type = false;
-
-    if (!json.HasMember("results") || json["results"].Empty()) {
-        spdlog::warn("什么也没搜到 标题：{}", name);
-        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
-        return;
-    } else {
-        auto&& tmp = json["results"][0].GetObj();
-        id = QString::number(tmp["id"].GetInt());
-        if (!std::strcmp(tmp["media_type"].GetString(), "tv")) {
-            type = false;
-            title = tmp["name"].GetString();
-        } else if (!std::strcmp(tmp["media_type"].GetString(), "movie")) {
-            type = true;
-            title = tmp["title"].GetString();
-        } else {
-            spdlog::warn("未知的类别 标题：{}", name, tmp["media_type"].GetString());
-        }
-        overview = tmp["overview"].GetString();
-    }
-
-    QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, id), Q_ARG(int, row), Q_ARG(QString, std::move(title)), Q_ARG(bool, type), Q_ARG(QString, std::move(overview)));
-    return;
-}
-
-fetch_shows::update_thread::update_thread(int i, int r, bool t, config* c, QObject* object) {
-    id = i, row = r, type = t, cfg = c, obj = object;
-}
-
-void fetch_shows::update_thread::run() {
-    if (!id) {
-        spdlog::warn("第 {} 行 ID 为空", row);
-        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
-        return;
-    }
-    const std::string requrl = std::string("https://api.themoviedb.org/3/") + (type ? "movie/" : "tv/") + std::to_string(id) + "?language=zh-CN";
-    std::string reqdata = request(requrl.c_str(), cfg);
-    if (reqdata.empty()) {
-        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
-        return;
-    }
-
-    using namespace rapidjson;
-    Document json;
-    if (json.Parse(reqdata.data()).HasParseError()) {
-        spdlog::error("获取到的 JSON 解析错误 数据：{}", reqdata);
-        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
-        return;
-    }
-
-    QString i = QString::number(id), title, overview;
-    if (type) title = json["title"].GetString();
-    else title = json["name"].GetString();
-    overview = json["overview"].GetString();
-    QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, i), Q_ARG(int, row), Q_ARG(QString, std::move(title)), Q_ARG(bool, type), Q_ARG(QString, std::move(overview)));
-    return;
-}
-
-fetch_shows::write_thread::write_thread(int i, bool t, path p, config* c, QObject* object) {
-    id = i, pth = p, type = t, cfg = c, obj = object;
-}
-
-void fetch_shows::write_thread::run() {
+void fetch_shows::write_thread::write_nfo() {
     using namespace rapidjson;
     const std::string id_str = std::to_string(id);
     std::string requrl = std::string("https://api.themoviedb.org/3/") + (type ? "movie/" : "tv/") + id_str + "?language=zh-CN";
     std::string reqdata = request(requrl.c_str(), cfg);
     if (reqdata.empty()) {
-        spdlog::error("无法获取详细信息 路径：{}", pth.generic_u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+        spdlog::error("无法获取详细信息 路径：{}", path.generic_u8string());
         return;
     }
     Document details, keywords, credits;
     if (details.Parse(reqdata.data()).HasParseError()) {
         spdlog::error("详细信息获取到的 JSON 解析错误 数据：{}", reqdata);
-        QMetaObject::invokeMethod(obj, "write_return");
         return;
     }
     requrl = std::string("https://api.themoviedb.org/3/") + (type ? "movie/" : "tv/") + id_str + "/keywords";
     reqdata = request(requrl.c_str(), cfg);
     if (reqdata.empty()) {
-        spdlog::error("无法获取关键词 路径：{}", pth.generic_u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+        spdlog::error("无法获取关键词 路径：{}", path.generic_u8string());
         return;
     }
     if (keywords.Parse(reqdata.data()).HasParseError()) {
         spdlog::error("关键词获取到的 JSON 解析错误 数据：{}", reqdata);
-        QMetaObject::invokeMethod(obj, "write_return");
         return;
     }
     requrl = std::string("https://api.themoviedb.org/3/") + (type ? "movie/" : "tv/") + id_str + (type ? "/credits?language=zh-CN" : "/aggregate_credits?language=zh-CN");
     reqdata = request(requrl.c_str(), cfg);
     if (reqdata.empty()) {
-        spdlog::error("无法获取制作人员数据 路径：{}", pth.generic_u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+        spdlog::error("无法获取制作人员数据 路径：{}", path.generic_u8string());
         return;
     }
     if (credits.Parse(reqdata.data()).HasParseError()) {
         spdlog::error("制作人员数据获取到的 JSON 解析错误 数据：{}", reqdata);
-        QMetaObject::invokeMethod(obj, "write_return");
         return;
     }
 
@@ -387,34 +214,237 @@ void fetch_shows::write_thread::run() {
         else actor.append_child("role").append_child(node_pcdata).set_value(obj["roles"][0].GetObj()["character"].GetString());
     }
 
-    const path write = pth / "tvshow.nfo";
+    const fs_path write = path / "tvshow.nfo";
 
     if (std::filesystem::exists(write)) {
         int ret = -1;
-        QMetaObject::invokeMethod(obj, "cover_check", Qt::BlockingQueuedConnection, Q_RETURN_ARG(int, ret), Q_ARG(QString, "文件操作确认"), Q_ARG(QString, QString::fromStdString(write.u8string()) + " 已存在，是否覆盖"));
+        QMetaObject::invokeMethod(obj, "cover_check", Qt::BlockingQueuedConnection, Q_RETURN_ARG(int, ret), Q_ARG(QString, "文件操作确认"), Q_ARG(QString, QString::fromStdWString(write.generic_wstring()) + " 已存在，是否覆盖"));
         if (ret == QMessageBox::Yes) {
-            if (QFile::moveToTrash(QString::fromStdString(write.u8string())))
-                spdlog::info("{} 已被移至回收站", write.u8string());
+            if (QFile::moveToTrash(QString::fromStdWString(write.generic_wstring())))
+                spdlog::info("{} 已被移至回收站", write.generic_u8string());
             else {
-                spdlog::error("{} 移至回收站失败", write.u8string());
-                QMetaObject::invokeMethod(obj, "write_return");
+                spdlog::error("{} 移至回收站失败", write.generic_u8string());
                 return;
             }
         } else {
-            spdlog::info("用户放弃覆盖文件：{}", write.u8string());
-            QMetaObject::invokeMethod(obj, "write_return");
+            spdlog::info("用户放弃覆盖文件：{}", write.generic_u8string());
             return;
         }
     }
     if (!doc.save_file(write.generic_wstring().c_str())) {
-        spdlog::error("XML 输出故障 文件：{}", write.u8string());
-        QMetaObject::invokeMethod(obj, "write_return");
+        spdlog::error("XML 输出故障 文件：{}", write.generic_u8string());
         return;
     }
-    spdlog::info("元数据写入成功 文件：{}", write.u8string());
-
-    QMetaObject::invokeMethod(obj, "write_return");
+    spdlog::info("元数据写入成功 文件：{}", write.generic_u8string());
     return;
+}
+
+void fetch_shows::write_thread::write_strm() {
+    using namespace rapidjson;
+    const std::string id_str = std::to_string(id);
+    std::string requrl = std::string("https://api.themoviedb.org/3/") + (type ? "movie/" : "tv/") + id_str + "?language=zh-CN";
+    std::string reqdata = request(requrl.c_str(), cfg);
+    if (reqdata.empty()) {
+        spdlog::error("无法获取详细信息 路径：{}", path.generic_u8string());
+        return;
+    }
+    Document details;
+    if (details.Parse(reqdata.data()).HasParseError()) {
+        spdlog::error("详细信息获取到的 JSON 解析错误 数据：{}", reqdata);
+        return;
+    }
+
+    std::wstring name = utf8_to_wchar(details[type ? "title" : "name"].GetString(), details[type ? "title" : "name"].GetStringLength());
+    std::wstring ori_name = name;
+    if (details[type ? "release_date" : "first_air_date"].IsString()) {
+        const char* tmp = details[type ? "release_date" : "first_air_date"].GetString();
+        name += std::wstring(L" (") + wchar_t(tmp[0]) + wchar_t(tmp[1]) + wchar_t(tmp[2]) + wchar_t(tmp[3]) + L')';
+    }
+    name += L" [tmdbid-" + std::to_wstring(id) + L']';
+    replace_illegal_char(name);
+    const fs_path folder = cfg->get_save_path() / (type ? L"电影" : L"剧集") / name;
+    lock.lock();
+    shows->emplace(std::pair<bool, int>{type, id}, std::pair<fs_path, std::wstring>{folder, std::move(ori_name)});
+    lock.unlock();
+    create_directory_with_log(folder);
+    return;
+}
+
+fetch_shows::~fetch_shows() {}
+
+void fetch_shows::SearchSelected_Clicked() {
+    const auto& index = ui.showsTable->selectionModel()->selectedRows();
+    if (index.empty()) return;
+    all_setEnable(false);
+    for (auto&& it : index) {
+        std::string search = ui.showsTable->item(it.row(), 1)->text().toStdString();
+        search_thread* t = new search_thread(std::move(search), it.row(), cfg, this);
+        ++running;
+        QThreadPool::globalInstance()->start(t);
+    }
+}
+
+void fetch_shows::all_setEnable(bool status) {
+    ui.Widget1->setEnabled(status);
+}
+
+void fetch_shows::UpdateSelected_Clicked() {
+    const auto& index = ui.showsTable->selectionModel()->selectedRows();
+    if (index.empty()) return;
+    all_setEnable(false);
+    for (auto&& it : index) {
+        const std::string search = ui.showsTable->item(it.row(), 1)->text().toStdString();
+        QLineEdit* edit = (QLineEdit*)ui.showsTable->cellWidget(it.row(), 2);
+        QComboBox* type = (QComboBox*)ui.showsTable->cellWidget(it.row(), 4);
+        update_thread* t = new update_thread(edit->text().toInt(), it.row(), type->currentIndex(), cfg, this);
+        ++running;
+        QThreadPool::globalInstance()->start(t);
+    }
+}
+
+void fetch_shows::WriteSelected_Clicked() {
+    all_setEnable(false);
+    bool called = true;
+    const auto& index = ui.showsTable->selectionModel()->selectedRows();
+    for (auto&& it : index) {
+        QString edit = ((QLineEdit*)ui.showsTable->cellWidget(it.row(), 2))->text();
+        if (edit.isEmpty()) {
+            spdlog::warn("缺少 TMDB ID，项目：{}", shows[it.row()].generic_u8string());
+            continue;
+        }
+        called = false;
+        QComboBox* type = (QComboBox*)ui.showsTable->cellWidget(it.row(), 4);
+        write_thread* t = new write_thread(edit.toInt(), type->currentIndex(), shows[it.row()], cfg, this, &shows_path);
+        ++running;
+        QThreadPool::globalInstance()->start(t);
+    }
+    if (called) all_setEnable(true);
+}
+
+void fetch_shows::RightMenu_Clicked(const QPoint& point) {
+    menu->exec(QCursor::pos());
+}
+
+void fetch_shows::RightMenuAction_Clicked() {
+    const auto& index = ui.showsTable->selectionModel()->selectedRows();
+    for (auto&& it : index) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(ui.showsTable->item(it.row(), 0)->text()));
+    }
+}
+
+void fetch_shows::DialogSearchSelected_Clicked() {
+    const auto& index = ui.showsTable->selectionModel()->selectedRows();
+    for (auto&& it : index) {
+        const std::string search = ui.showsTable->item(it.row(), 1)->text().toStdString();
+        const auto& [id, type, name, overview] = search_dialog::search_tvshow(cfg, ui.Widget1, search.c_str());
+        ((QLineEdit*)ui.showsTable->cellWidget(it.row(), 2))->setText(id ? QString::number(id) : QString());
+        ui.showsTable->item(it.row(), 3)->setText(name);
+        ((QComboBox*)ui.showsTable->cellWidget(it.row(), 4))->setCurrentIndex(type);
+        ui.showsTable->item(it.row(), 5)->setText(overview);
+    }
+}
+
+void fetch_shows::Cell_DoubleClicked(int row, int column) {
+    const std::string search = ui.showsTable->item(row, 1)->text().toStdString();
+    const auto& [id, type, name, overview] = search_dialog::search_tvshow(cfg, ui.Widget1, search.c_str());
+    ((QLineEdit*)ui.showsTable->cellWidget(row, 2))->setText(id ? QString::number(id) : QString());
+    ui.showsTable->item(row, 3)->setText(name);
+    ((QComboBox*)ui.showsTable->cellWidget(row, 4))->setCurrentIndex(type);
+    ui.showsTable->item(row, 5)->setText(overview);
+}
+
+fetch_shows::search_thread::search_thread(std::string&& name, int row, config* cfg, QObject* object)
+    : name(std::move(name)), row(row), cfg(cfg), obj(object) {}
+
+void fetch_shows::search_thread::run() {
+    char* url = curl_escape(name.c_str(), name.size());
+    std::string requrl = std::string("https://api.themoviedb.org/3/search/multi?query=") + url + "&include_adult=false&language=zh-CN&page=1";
+    curl_free(url);
+    std::string reqdata = request(requrl.c_str(), cfg);
+    if (reqdata.empty()) {
+        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
+        return;
+    }
+
+    using namespace rapidjson;
+    Document json;
+    if (json.Parse(reqdata.data()).HasParseError()) {
+        spdlog::error("获取到的 JSON 解析错误 数据：{}", reqdata);
+        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
+        return;
+    }
+
+    QString id("-1"), title, overview;
+    bool type = false;
+
+    if (!json.HasMember("results") || json["results"].Empty()) {
+        spdlog::warn("什么也没搜到 标题：{}", name);
+        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
+        return;
+    } else {
+        auto&& tmp = json["results"][0].GetObj();
+        id = QString::number(tmp["id"].GetInt());
+        if (!std::strcmp(tmp["media_type"].GetString(), "tv")) {
+            type = false;
+            title = tmp["name"].GetString();
+        } else if (!std::strcmp(tmp["media_type"].GetString(), "movie")) {
+            type = true;
+            title = tmp["title"].GetString();
+        } else {
+            spdlog::warn("未知的类别 标题：{}", name, tmp["media_type"].GetString());
+        }
+        overview = tmp["overview"].GetString();
+    }
+
+    QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, id), Q_ARG(int, row), Q_ARG(QString, std::move(title)), Q_ARG(bool, type), Q_ARG(QString, std::move(overview)));
+    return;
+}
+
+fetch_shows::update_thread::update_thread(int id, int row, bool type, config* cfg, QObject* object)
+    : id(id), row(row), type(type), cfg(cfg), obj(object) {}
+
+void fetch_shows::update_thread::run() {
+    if (!id) {
+        spdlog::warn("第 {} 行 ID 为空", row);
+        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
+        return;
+    }
+    const std::string requrl = std::string("https://api.themoviedb.org/3/") + (type ? "movie/" : "tv/") + std::to_string(id) + "?language=zh-CN";
+    std::string reqdata = request(requrl.c_str(), cfg);
+    if (reqdata.empty()) {
+        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
+        return;
+    }
+
+    using namespace rapidjson;
+    Document json;
+    if (json.Parse(reqdata.data()).HasParseError()) {
+        spdlog::error("获取到的 JSON 解析错误 数据：{}", reqdata);
+        QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, QString()), Q_ARG(int, row), Q_ARG(QString, QString()), Q_ARG(bool, false), Q_ARG(QString, QString()));
+        return;
+    }
+
+    QString i = QString::number(id), title, overview;
+    if (type) title = json["title"].GetString();
+    else title = json["name"].GetString();
+    overview = json["overview"].GetString();
+    QMetaObject::invokeMethod(obj, "thread_return", Q_ARG(QString, i), Q_ARG(int, row), Q_ARG(QString, std::move(title)), Q_ARG(bool, type), Q_ARG(QString, std::move(overview)));
+    return;
+}
+
+fetch_shows::write_thread::write_thread(int id, bool type, fs_path path, config* cfg, QObject* object, shows_directories* shows)
+    : id(id), type(type), path(path), cfg(cfg), obj(object), shows(shows) {}
+
+void fetch_shows::write_thread::run() {
+    switch (cfg->get_save_type()) {
+    case 1:
+        write_nfo();
+        break;
+    case 2:
+        write_strm();
+        break;
+    }
+    QMetaObject::invokeMethod(obj, "write_return");
 }
 
 void fetch_shows::Next_Clicked() {
@@ -424,7 +454,7 @@ void fetch_shows::Next_Clicked() {
     ids.reserve(library.size());
     for (size_t i = 0; i < library.size(); ++i)
         ids.emplace_back(((QLineEdit*)(ui.showsTable->cellWidget(i, 2)))->text(), ui.showsTable->item(i, 3)->text(), ((QComboBox*)(ui.showsTable->cellWidget(i, 4)))->currentIndex());
-    next_window->show();
-    next_window->set_library(std::move(library), std::move(ids));
+    using data_type = std::tuple<library_directories, std::vector<std::tuple<QString, QString, bool>>, shows_directories>;
+    next_window->init(new data_type{std::move(library), std::move(ids), std::move(shows_path)});
     destroy();
 }

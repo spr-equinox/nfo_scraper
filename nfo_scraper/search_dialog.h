@@ -8,11 +8,11 @@ class search_dialog : public QDialog {
     Q_OBJECT
 
 public:
-    search_dialog(config* c, QWidget* parent = nullptr);
+    search_dialog(config* cfg, QWidget* parent = nullptr);
     ~search_dialog();
 
     // id type name overview
-    static std::tuple<int, bool, QString, QString> search_tvshow(config* c, QWidget* parent = nullptr, const char* str = nullptr);
+    static std::tuple<int, bool, QString, QString> search_tvshow(config* cfg, QWidget* parent = nullptr, const char* str = nullptr);
 
 private:
     config* cfg;

@@ -5,9 +5,8 @@
 #include <QFileDialog>
 #include <vector>
 
-process_shows::process_shows(config* c, fetch_shows* w, QWidget* parent)
-    : QMainWindow(parent) {
-    cfg = c, next_window = w;
+process_shows::process_shows(config* cfg, window_init_with_data* next_window, QWidget* parent)
+    : window_init_with_data(parent), cfg(cfg), next_window(next_window) {
     ui.setupUi(this);
     connect(ui.Next, SIGNAL(clicked()), this, SLOT(Next_Clicked()));
     connect(ui.CreateIgnore, SIGNAL(clicked()), this, SLOT(CreateIgnore_Clicked()));
@@ -15,11 +14,10 @@ process_shows::process_shows(config* c, fetch_shows* w, QWidget* parent)
     connect(ui.Collapse, SIGNAL(clicked()), ui.libraryTree, SLOT(collapseAll()));
 }
 
-void process_shows::set_search_paths(vec_paths&& data) {
-    search_paths = std::move(data);
-}
-
-void process_shows::set_up() {
+void process_shows::init(void *pointer) {
+    search_paths = std::move(*(vec_paths*)pointer);
+    delete (vec_paths*)pointer;
+    show();
     search = new search_thread(this);
     connect(search, SIGNAL(finished()), this, SLOT(search_finished()));
     search->start();
@@ -28,7 +26,7 @@ void process_shows::set_up() {
 process_shows::~process_shows() {
 }
 
-void process_shows::dfs(const path& now) {
+void process_shows::dfs(const fs_path& now) {
     if (std::filesystem::exists(now / ".ignore")) {
         spdlog::info("路径 {} 被忽略", now.generic_u8string());
         ignore_paths.emplace_back(now);
@@ -46,28 +44,27 @@ void process_shows::dfs(const path& now) {
     }
     for (const auto& it : std::filesystem::directory_iterator(now)) {
         if (!it.is_directory()) continue;
-        const auto& pth = it.path();
-        if (cfg->check_ignore(pth.filename().generic_u8string())) {
-            spdlog::info("路径 {} 被忽略", pth.generic_u8string());
-            ignore_paths.emplace_back(pth);
+        const auto& path = it.path();
+        if (cfg->check_ignore(path.filename().generic_u8string())) {
+            spdlog::info("路径 {} 被忽略", path.generic_u8string());
+            ignore_paths.emplace_back(path);
             continue;
         }
-        dfs(pth);
+        dfs(path);
     }
 }
 
 void process_shows::Next_Clicked() {
     spdlog::info("第二阶段结束");
     close();
-    next_window->show();
-    next_window->set_library(std::move(library));
+    next_window->init(new library_directories(std::move(library)));
     destroy();
 }
 
 void process_shows::CreateIgnore_Clicked() {
     ui.Widget1->setEnabled(false);
     for (auto&& it : ui.ignoreList->selectedItems()) {
-        path p(it->text().toStdWString());
+        fs_path p(it->text().toStdWString());
         p /= ".ignore";
         if (std::filesystem::exists(p))
             spdlog::info("文件 {} 已存在，跳过", p.generic_u8string());
@@ -88,29 +85,27 @@ void process_shows::CreateIgnore_Clicked() {
 
 void process_shows::search_finished() {
     for (auto&& it : ignore_paths)
-        ui.ignoreList->addItem(QString::fromStdString(it.generic_u8string()));
+        ui.ignoreList->addItem(QString::fromStdWString(it.generic_wstring()));
     for (auto&& it : library) {
-        QTreeWidgetItem* new_top_item = new QTreeWidgetItem(QStringList{QString::fromStdString(it.first.u8string())});
+        QTreeWidgetItem* new_top_item = new QTreeWidgetItem(QStringList{QString::fromStdWString(it.first.generic_wstring())});
         ui.libraryTree->addTopLevelItem(new_top_item);
-        for (auto&& c : it.second)
-            new_top_item->addChild(new QTreeWidgetItem(QStringList{QString::fromStdString(c.u8string())}));
+        for (auto&& sub : it.second)
+            new_top_item->addChild(new QTreeWidgetItem(QStringList{QString::fromStdWString(sub.generic_wstring())}));
     }
     ui.Waiting->setText(QCoreApplication::translate("process_showsClass", "已完成", nullptr));
     ui.Next->setEnabled(true);
-    ui.CreateIgnore->setEnabled(true);
+    if (cfg->get_save_type() == 1) ui.CreateIgnore->setEnabled(true);
     ui.libraryTree->expandAll();
 }
 
-process_shows::search_thread::search_thread(process_shows* that) {
-    ths = that;
-}
+process_shows::search_thread::search_thread(process_shows* self) : self(self) {}
 
 void process_shows::search_thread::run() {
-    for (auto&& it : ths->search_paths) {
+    for (auto&& it : self->search_paths) {
         it = it.make_preferred();
         for (const auto& ch : std::filesystem::directory_iterator(it)) {
             if (!ch.is_directory()) continue;
-            ths->dfs(ch.path());
+            self->dfs(ch.path());
         }
     }
 }

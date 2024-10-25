@@ -1,16 +1,24 @@
 {
-    "media_extension": [
-        ".mkv",
-        ".mp4",
-        ".m2ts"
-    ],
+	// 视频后缀名列表，用于识别视频文件，区分大小写
+	"media_extension": [
+		".mkv",
+		".mp4",
+		".m2ts"
+	],
+	// 用来提取“搜索名称”的正则表达式，数字代表提取第n个子匹配（从1开始）
 	"title_regex_expression": [
 		["^([\\[\\(].*?[\\]\\)]\\[* *)*([^#\\[\\]\\.\\(\\)]*)+.*$", 2]
 	],
+	// 忽略的路径的正则表达式
 	"ignore_expression": [
 		"BDMV"
 	],
+	// tmdb api 密钥，必填，否则无法使用
+	// 申请链接 https://developer.themoviedb.org/docs/getting-started
 	"tmdb_api_key": "",
+	// 有需要的可以开启代理
 	"using_proxy": true,
-	"proxy_address": "http://127.0.0.1:7890"
+	"proxy_address": "http://127.0.0.1:7890",
+	"save_type": "strm",
+	"save_path": "L:/test"
 }

@@ -8,9 +8,8 @@
 
 #include "search_dialog.h"
 
-add_episodes_dialog::add_episodes_dialog(int i, config* c, QWidget* parent)
-    : QDialog(parent) {
-    id = i, cfg = c, accepted = false;
+add_episodes_dialog::add_episodes_dialog(int id, config* cfg, QWidget* parent)
+    : QDialog(parent), id(id), cfg(cfg), accepted(false) {
     ui.setupUi(this);
 
     using namespace rapidjson;
@@ -39,11 +38,11 @@ add_episodes_dialog::add_episodes_dialog(int i, config* c, QWidget* parent)
 add_episodes_dialog::~add_episodes_dialog() {
 }
 
-fetch_episode::vec_remotes add_episodes_dialog::add_episodes(config* c, QWidget* parent, const char* str) {
-    const auto [id, type, name, overview] = search_dialog::search_tvshow(c, parent, str);
+fetch_episode::vec_remotes add_episodes_dialog::add_episodes(config* cfg, QWidget* parent, const char* str) {
+    const auto [id, type, name, overview] = search_dialog::search_tvshow(cfg, parent, str);
     if (!id) return fetch_episode::vec_remotes();
     if (type) return {fetch_episode::remote(id, type, -1, -1, name)};
-    add_episodes_dialog dialog(id, c, parent);
+    add_episodes_dialog dialog(id, cfg, parent);
     dialog.exec();
     return dialog.accepted ? dialog.epis : fetch_episode::vec_remotes();
 }

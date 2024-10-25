@@ -50,3 +50,61 @@ std::string request(const char* url, config* cfg) {
     if (reqdata.empty()) spdlog::error("网络请求错误次数过多");
     return reqdata;
 }
+
+bool create_directory_with_log(const fs_path& path) {
+    if (std::filesystem::exists(path)) {
+        spdlog::warn("已存在目录：{}", path.generic_u8string());
+        return true;
+    }
+    if (std::filesystem::create_directories(path)) {
+        spdlog::info("成功创建目录：{}", path.generic_u8string());
+        return true;
+    } else {
+        spdlog::error("创建目录 {} 失败", path.generic_u8string());
+        return false;
+    }
+}
+
+std::wstring utf8_to_wchar(const char* str, int len) {
+    int wcsLen = MultiByteToWideChar(CP_UTF8, NULL, str, len, NULL, 0);
+    std::wstring ret;
+    ret.resize(wcsLen);
+    MultiByteToWideChar(CP_UTF8, NULL, str, len, ret.data(), wcsLen);
+    return ret;
+}
+
+void replace_illegal_char(std::wstring& str) {
+    for (auto&& it : str) {
+        switch (it) {
+        case L'\\':
+            it = L'＼';
+            break;
+        case L'/':
+            it = L'／';
+            break;
+        case L':':
+            it = L'：';
+            break;
+        case L'*':
+            it = L'×';
+            break;
+        case L'?':
+            it = L'？';
+            break;
+        case L'\"':
+            it = L'\'';
+            break;
+        case L'<':
+            it = L'＜';
+            break;
+        case L'>':
+            it = L'＞';
+            break;
+        case L'|':
+            it = L'丨';
+            break;
+        default:
+            break;
+        }
+    }
+}
