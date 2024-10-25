@@ -67,7 +67,7 @@
 
 ## STRM 文件模式
 
-strm 文件是一个文本文件，里面写着媒体文件的路径 （[官方文档](https://emby.media/support/articles/Strm-Files.html)）。媒体服务器可以通过这个文件链接到资源，而根据 strm 文件名和目录结构进行刮削，不会影响到仓库。
+strm 文件是一个文本文件，里面写着媒体文件的路径 （[官方文档](https://emby.media/support/articles/Strm-Files.html)）。媒体服务器可以通过这个文件链接到资源，而根据 strm 文件名和目录结构进行刮削，不会影响到仓库
 
 效果：
 ```
