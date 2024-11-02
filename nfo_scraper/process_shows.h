@@ -5,6 +5,7 @@
 #include <QtWidgets/QMainWindow>
 #include <filesystem>
 #include <unordered_map>
+#include <fstream>
 
 #include "config.h"
 #include "ui_process_shows.h"
@@ -31,6 +32,7 @@ private:
     Ui::process_showsClass ui;
     vec_paths search_paths, ignore_paths;
     library_directories library;
+    std::unordered_set<fs_path> exist_path;
     config* cfg;
     window_init_with_data* next_window;
     void dfs(const fs_path& now);

@@ -20,5 +20,6 @@
 	"using_proxy": true,
 	"proxy_address": "http://127.0.0.1:7890",
 	"save_type": "strm",
-	"save_path": "L:/test"
+	"save_path": "L:/test",
+	"incremental_update": true
 }

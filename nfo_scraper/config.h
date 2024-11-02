@@ -16,6 +16,7 @@ public:
     char get_save_type();
     fs_path get_save_path();
     bool is_proxy();
+    bool is_incremental_update();
     std::string proxy();
     config(const char *file);
 private:
@@ -24,6 +25,6 @@ private:
     std::unordered_set<std::string> media_exts;
     std::vector<std::pair<std::regex, unsigned int>> reg_str;
     std::vector<std::regex> ignore_reg;
-    bool use_proxy;
+    bool use_proxy, incremental_update;
     char save_type;
 };

@@ -92,6 +92,9 @@
       <Command>copy $(ProjectDir)config.json $(OutDirFullPath)</Command>
       <Message>复制配置文件</Message>
     </PostBuildEvent>
+    <Manifest>
+      <EnableDpiAwareness>false</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>

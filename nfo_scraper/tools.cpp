@@ -37,12 +37,12 @@ std::string request(const char* url, config* cfg) {
         int http_code;
         curl_easy_getinfo(hnd, CURLINFO_RESPONSE_CODE, &http_code);
         if (ret == CURLE_OK && http_code == 200) {
-            spdlog::info("URL 请求成功 耗时{}ms", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(std::chrono::steady_clock::now() - st).count());
+            // spdlog::info("URL 请求成功 耗时{}ms", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(std::chrono::steady_clock::now() - st).count());
             curl_easy_cleanup(hnd);
             break;
         }
 
-        spdlog::warn("curl_easy_perform() 执行错误：{} HTTP状态码：{} URL：{}", curl_easy_strerror(ret), http_code, url);
+        spdlog::warn("curl_easy_perform() 执行错误：{} 状态码：{} URL：{}", curl_easy_strerror(ret), http_code, url);
         spdlog::warn("正在重试第 {}/5 遍", i);
         curl_easy_cleanup(hnd);
         reqdata.clear();

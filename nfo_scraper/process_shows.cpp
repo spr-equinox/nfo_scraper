@@ -32,8 +32,11 @@ void process_shows::dfs(const fs_path& now) {
         ignore_paths.emplace_back(now);
         return;
     }
+    bool found = false;
     for (const auto& it : std::filesystem::directory_iterator(now)) {
-        if (it.is_regular_file() && cfg->check_ext(it.path().extension().generic_u8string())) {
+        if (!it.is_directory() && cfg->check_ext(it.path().extension().generic_u8string())) {
+            found = true;
+            if (exist_path.count(it.path())) continue;
             const auto &parent = now.parent_path(), &filename = now.filename();
             spdlog::info("找到媒体文件夹：{}", now.generic_u8string());
             if (auto tmp = library.find(parent); tmp != library.end())
@@ -41,6 +44,10 @@ void process_shows::dfs(const fs_path& now) {
             else library.emplace(parent, vec_paths{filename});
             return;
         }
+    }
+    if (found) {
+        spdlog::info("媒体文件夹 {} 中的所有文件已链接，跳过", now.generic_u8string());
+        return;
     }
     for (const auto& it : std::filesystem::directory_iterator(now)) {
         if (!it.is_directory()) continue;
@@ -101,6 +108,20 @@ void process_shows::search_finished() {
 process_shows::search_thread::search_thread(process_shows* self) : self(self) {}
 
 void process_shows::search_thread::run() {
+    if (self->cfg->get_save_type() == 2 && self->cfg->is_incremental_update()) {
+        for (const auto& ch : std::filesystem::recursive_directory_iterator(self->cfg->get_save_path())) {
+            if (ch.is_directory() || ch.path().extension() != L".strm") continue;
+            std::ifstream f(ch.path());
+            std::string str;
+            str.resize(ch.file_size());
+            f.read(str.data(), str.size());
+            if (f.bad()) {
+                spdlog::error("读取文件 {} 时发生了 I/O 错误", ch.path().generic_u8string());
+                continue;
+            }
+            self->exist_path.emplace(utf8_to_wchar(str.c_str(), str.size()));
+        }
+    }
     for (auto&& it : self->search_paths) {
         it = it.make_preferred();
         for (const auto& ch : std::filesystem::directory_iterator(it)) {
