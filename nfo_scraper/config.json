@@ -19,7 +19,10 @@
 	// 有需要的可以开启代理
 	"using_proxy": true,
 	"proxy_address": "http://127.0.0.1:7890",
+	// 有两种模式：strm 和 nfo
 	"save_type": "strm",
+	// 如果是 strm 模式需要填写目标路径
 	"save_path": "L:/test",
+	// 如果是 strm 模式可以开启增量更新，已经有 strm 文件的媒体会被忽略
 	"incremental_update": true
 }

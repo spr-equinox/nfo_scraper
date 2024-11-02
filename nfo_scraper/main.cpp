@@ -15,7 +15,7 @@
 #include "search_dialog.h"
 #include "write_ignore.h"
 
-const char version[] = "0.4-static";
+const char version[] = "0.5-static";
 
 int main(int argc, char *argv[]) {
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
